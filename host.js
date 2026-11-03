@@ -34,7 +34,7 @@ export function apply(ctx){
  function log(type,detail,run=active?.run){
    const row={timelineId:randomUUID().replaceAll('-','').slice(0,24),at:Date.now(),run,sessionId:active?.id||bound(),type,detail:String(detail||'').slice(0,1800)};
    row.displaySessionId=displayIdNow();
-   const choice=state.choice?.run===run?state.choice:state.pending?.run===run?state.pending.ticket:null;
+   const choice=state.choice?.run===run?state.choice:run&&state.pending?.run===run?state.pending.ticket:null;
    if(choice){row.thread=choice.thread;row.eventIds=choice.eventIds;}
    state.history.push(row);state.history=state.history.slice(-150);commit();
    try{queueDisplay(home,row);}catch(e){ctx.logger?.warn('时间线暂未排队：'+e.message);}
