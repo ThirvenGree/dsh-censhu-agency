@@ -14,13 +14,14 @@ test('主动决定 → 独处审核 → 原有记忆渠道；重复请求不再�
  const agency=path.join(home,'censhu-agency');fs.mkdirSync(agency);fs.writeFileSync(path.join(agency,'owner.json'),JSON.stringify({until:now+60000,sessionId}));
  const life={contract:'censhu.life-integration',version:2,status:()=>({enabled:true,sessionIds:[sessionId],timezone:'Asia/Shanghai',life:{activity:'整理旧书'},mood:{ok:false}}),
  changesSince:cursor=>({contract:'censhu.life-changes',version:1,cursor:1,items:events.filter(e=>e.sequence>cursor)}),snapshot:()=>({context:'生活',memories:[{text:'曾经整理过旧书'}]}),
- judge:async(_p,_s,input)=>{assert.equal(input.candidate.reflection,'看到那张票根，有点怀念。');assert.equal(input.memories.length,1);audits++;return {valid:true,reason:'有原文依据',remember:true,memoryText:'在旧书里发现票根',evidence:'翻开旧书找到一张票根',importance:91,newFeeling:false};},
+ judge:async(_p,_s,input)=>{assert.equal(input.candidate.reflection,'看到那张票根，有点怀念。');assert.equal(input.memories.length,1);assert.equal(input.observations[0].data.eventId,'book');audits++;return {valid:true,reason:'有原文依据',remember:true,memoryText:'在旧书里发现票根',evidence:'翻开旧书找到一张票根',importance:91,newFeeling:false};},
  submitInnerResult:async r=>{requests.push(r);return {memory:'queued'};}};
  const core=new InnerLife({dir,life,now:()=>now,reflect:()=>assert.fail('不应启动第二个独处执行者')});
  core.ingest();const tick=()=>tickWithAgency(core,core.tick.bind(core),{ingested:true});
  await tick();assert.equal(audits,0);
  const r={sessionId,run:'r1',reflection:'看到那张票根，有点怀念。',eventIds:['book']};
  const first=receiveDiary(core,r);assert.equal(first.status,'queued');assert.deepEqual(receiveDiary(core,r),first);
+ core.record.queue=[]; // 审核前队列已清理，仍应使用提交当时的生活观察。
  await tick();await tick();
  assert.equal(audits,1);assert.equal(requests.length,1);assert.equal(requests[0].memory.quote,'翻开旧书找到一张票根');assert.equal(core.record.entries.length,1);
  assert.equal(receiveDiary(core,r).status,'reviewed');assert.ok(agencyDisplay(dir,sessionId).some(row=>row.displayText.includes('来源回合 r1')));

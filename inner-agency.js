@@ -35,7 +35,8 @@ export function receiveDiary(core,request){
  const previous=core.record.agencyRequests.find(x=>x.id===key);
  if(previous)return {id:key,status:previous.status};
  if(core.record.agencyRequests.filter(x=>x.status==='queued').length>=12)throw Error('独处积压，请稍后再处理');
- const row={id:key,sourceId:sessionId,run,reflection:reflection.trim(),actions:request.actions||[],eventIds:[...new Set(eventIds)],at:core.now(),status:'queued'};
+ const observations=structuredClone((core.record.queue||[]).filter(x=>eventIds.includes(x.data?.eventId)).slice(-16));
+ const row={observations,id:key,sourceId:sessionId,run,reflection:reflection.trim(),actions:request.actions||[],eventIds:[...new Set(eventIds)],at:core.now(),status:'queued'};
  core.record.agencyRequests=[...core.record.agencyRequests.filter(x=>x.status!=='queued'&&x.status!=='auditing').slice(-75),...core.record.agencyRequests.filter(x=>['queued','auditing'].includes(x.status)),row];
  core.save();return {id:key,status:row.status};
 }
@@ -43,7 +44,7 @@ export async function tickWithAgency(core,tick,args){
  for(const row of core.record.agencyRequests||[]){
    if(row.status!=='auditing')continue;
    const entry=core.record.entries.find(e=>e.id===row.id),reject=core.record.rejected?.find(e=>e.id===row.id);
-   if(entry||reject||core.record.attempt?.id!==row.id){row.status=entry?'reviewed':reject?'rejected':'unconfirmed';row.updatedAt=core.now();core.save();}
+   if(entry||reject||core.record.attempt?.id!==row.id){row.status=entry?'reviewed':reject?'rejected':'unconfirmed';row.updatedAt=core.now();delete row.observations;core.save();}
  }
  if(!ownsInner(core))return tick(args);
  if(core.busy)return;
@@ -56,7 +57,11 @@ export async function tickWithAgency(core,tick,args){
  const row=core.record.agencyRequests?.find(x=>x.status==='queued'&&x.sourceId===core.sourceId());
  if(!row||core.quiet()||core.chatting()||core.record.configurationError||core.record.retryAt>core.now())return;
  if(core.count().reflections>=core.config.maxReflectionsDaily)return;
- const observations=core.record.queue.filter(x=>row.eventIds.includes(x.data?.eventId)).slice(-16);
+ // Ingestion can lag behind submission. Fill missing events only from observations
+ // already dated at submission; later stages cannot support an earlier diary.
+ const captured=row.observations||[], represented=new Set(captured.map(x=>x.data?.eventId));
+ const delayed=core.record.queue.filter(x=>row.eventIds.includes(x.data?.eventId)&&!represented.has(x.data.eventId)&&x.at<=row.at);
+ const observations=[...captured,...delayed.slice(Math.max(0,delayed.length-(16-captured.length)))].slice(0,16);
  const snapshot=core.life.snapshot({sessionId:row.sourceId,purpose:'reflection'});
  const now=core.now(), minutes=Math.min(1430,Math.max(5,Math.round(Number(core.config.minimumMinutes)||30)));
  // The character already chose and wrote this reflection. The existing audit alone decides effects.

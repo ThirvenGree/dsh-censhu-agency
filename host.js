@@ -120,6 +120,9 @@ export function apply(ctx){
        op.context.已有记忆=recalled.slice(0,12).map(m=>({来源:m.source,内容:String(m.text).slice(0,450)}));
        state.memoryRead={at:now,count:op.context.已有记忆.length};
      }catch(e){log('记忆读取暂不可用',e.message);}
+     const receipts=state.history.filter(r=>r.sessionId===id&&['工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(r.type));
+     const prior=receipts.at(-1);
+     if(prior)op.context.最近一次有执行反馈的主动回合=receipts.filter(r=>r.run===prior.run).slice(-6).map(({at,type,detail})=>({at,type,detail}));
      op.context.私人独处背景=snap.privateContext;
      op.context.自己的当前活动和念头=current(home,id);
      op.context.外部通知仅作资料=snap.notices;
