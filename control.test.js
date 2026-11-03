@@ -68,8 +68,8 @@ test('同一凌晨可自述清醒或疲惫；没有判断时只参考正在发�
  assert.equal(fatigue(),false);
  engine.state.active.push({effect:'fatigue'});
  assert.equal(fatigue(),true);
- for(const [energy,expected] of [['rested',false],['tired',true],['uncertain',true]]){
-   fs.writeFileSync(path.join(dir,'current.json'),JSON.stringify({sessionId:'role',until:Date.now()+60000,energy}));
+ for(const [energy,expected,fatigued] of [['rested',false],['tired',true],['uncertain',true],['手酸但还想听完',false,false],['眼睛发涩，想歇一会儿',true,true]]){
+   fs.writeFileSync(path.join(dir,'current.json'),JSON.stringify({sessionId:'role',until:Date.now()+60000,energy,fatigued}));
    assert.equal(fatigue(),expected);
  }
 }));

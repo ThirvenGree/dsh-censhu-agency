@@ -36,7 +36,7 @@ export function describePlan(n){
  return [n.text,n.resume&&'接回时从这里继续：'+n.resume,n.eventId&&'等到事件'+(n.when==='event-end'?'结束':'推进')+'：'+n.eventId,n.due&&'提醒时间：'+local(n.due),n.shareUntil&&'规划参考至：'+local(n.shareUntil)].filter(Boolean).join('\n');
 }
 export function describeActivity(v){
- return [v.activity,({tired:'感到疲惫',rested:'精力尚好',uncertain:'还说不清精力如何'})[v.energy],v.thought&&'当时的想法：'+v.thought,'有效至：'+local(v.until)].filter(Boolean).join('\n');
+ return [v.activity,({__proto__:null,tired:'感到疲惫',rested:'精力尚好',uncertain:'还说不清精力如何'})[v.energy]||v.energy,v.judgment&&'此刻的判断：'+v.judgment,v.thought&&'当时的想法：'+v.thought,'有效至：'+local(v.until)].filter(Boolean).join('\n');
 }
 
 export function acknowledgeSeenAgency(home,seen){

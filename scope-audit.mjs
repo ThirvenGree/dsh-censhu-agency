@@ -16,7 +16,7 @@ for(const id of JSON.parse(fs.readFileSync(path.join(profile,'package.json'))).d
  const base=roots.map(r=>path.join(r,id)).find(r=>fs.existsSync(path.join(r,'package.json')));
  if(!base){rows.push({id,status:'未读取安装包',kind:known.get(id)||'待审查'});continue;}
  const pkg=JSON.parse(fs.readFileSync(path.join(base,'package.json')));
- const scanned=[],signals=new Set(),visited=new Set();
+ const choiceSites=[];const scanned=[],signals=new Set(),visited=new Set();
  function scan(dir){
    const abs=fs.realpathSync(dir);if(visited.has(abs))return;visited.add(abs);
    for(const item of fs.readdirSync(dir,{withFileTypes:true})){
@@ -24,10 +24,13 @@ for(const id of JSON.parse(fs.readFileSync(path.join(profile,'package.json'))).d
      if(item.isDirectory()&&!/^(?:node_modules|test[s]?|fixtures|vendor|runtime|assets|coverage|dist-electron|\.git)$/i.test(item.name))scan(file);
      if(!item.isFile()||!(/\.(?:[mc]?js|ts|ya?ml)$/i.test(item.name))||/\.test\.|\.d\.ts$|^test[-.]|\.min\.js$/.test(item.name))continue;
      const src=fs.readFileSync(file,'utf8');scanned.push(path.relative(base,file));
+     for(const match of src.matchAll(/\b(?:decision|intent|choice|energy|stance|disposition|continueWatching)\s*:\s*\{[^{}]{0,100}?enum\s*:\s*\[([^\]]{1,240})\]/gi)){
+       choiceSites.push({file:path.relative(base,file),line:src.slice(0,match.index).split('\n').length,contract:match[0]});
+     }
      for(const [name,re] of [['定时',/setInterval\(|ctx\.interval\(|scheduleNext\(/],['发起回合',/\.followup\(|sessionController\.prompt\(/],['随机或评分',/Math\.random\(|minScore|skipChance/],['模型调用',/googleStructured\(|\.judge\(|\.generate\(/]])if(re.test(src))signals.add(name);
    }
  }
- scan(base);rows.push({id,version:pkg.version,files:scanned.length,signals:[...signals],kind:known.get(id)||'待审查',status:scanned.length?'已扫描':'未找到入口'});
+ scan(base);rows.push({id,version:pkg.version,files:scanned.length,signals:[...signals],choiceSites,kind:known.get(id)||'待审查',status:scanned.length?'已扫描':'未找到入口'});
 }
 const result={at:new Date().toISOString(),rows};if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(result,null,2));
 for(const r of rows)console.log(r.id,r.files||0,r.status,r.kind,(r.signals||[]).join('/'));
