@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ThirvenGree/dsh-cen-shu-life
-          ref: ea441c876b5b5564a53c025282c12796fbb78c57
+          ref: 3980b1aaccc9c7e88c51dc90144e341de1456b7b
           path: .life
       - uses: actions/checkout@v4
         with:
