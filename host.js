@@ -1,4 +1,4 @@
-import {agencyRequestHistory} from './request-history.js';
+import {agencyRequestHistory,displayMessageIds} from './request-history.js';
 import {verifySent} from './verify-sent.js';
 import {validAt,unchangedNotes,updateNote} from './prospective.js';
 import {createRequestGuard} from './request-guard.js';
@@ -241,8 +241,7 @@ export function apply(ctx){
      if(Object.keys(full).length){active.contextPages=full;op.context.可按需展开={工具:'censhu_agency_context_page',条目总数:available};}
      const packet=message(op,notes,run);
      const offContext=agent.ctx.on('system-prompt/assemble',async(_a,_c,next)=>{const assembled=await next();return {...assembled,sections:[...(assembled.sections||[]),{name:'censhu-agency-current',text:packet.content[0].text}]};});
-     const displayIds=new Set((agent.session.snapshotEvents?.()||[]).filter(e=>e.type==='user/message'&&
-       e.data?.source?.kind==='censhu-inner-life'&&(e.data.source.displayEntryId||e.data.source.executionRequestId)).map(e=>e.data.id));
+     const displayIds=displayMessageIds(agent.session.snapshotEvents?.()||[]);
      const offHistory=ctx.on('llm/stream',(options,next)=>{
        if(same(options.sessionId,executionId())&&Array.isArray(options.messages)&&options.messages.some(m=>m.id===run)){
          const previous=options.messages;
