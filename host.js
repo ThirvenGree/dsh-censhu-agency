@@ -57,7 +57,7 @@ export function apply(ctx){
    const life=ctx.cenShuLifeShared,inner=ctx.cenShuInnerLife;
    const main=ctx.agents.roots?.().find(a=>same(a.session?.id||a.id,bound()));
    return {life:['agencyLife','agencyPlan','searchEvents','eventPage','agencyConversation'].every(k=>typeof life[k]==='function'),
-     inner:['claimLifeTurn','registerAgencyWorker','agencyDevelop','agencyReview','receiveAgencyDiary'].every(k=>typeof inner[k]==='function'),
+     inner:['claimAgencyActionTurn','registerAgencyWorker','agencyDevelop','agencyReview','receiveAgencyDiary'].every(k=>typeof inner[k]==='function'),
      recall:main?!!ctx.tools.get('censhu_question_recall',main):null};
  }
  function ownership(){
@@ -189,12 +189,13 @@ export function apply(ctx){
      op.context.生活插件提出但尚未决定的可能打算=ctx.cenShuLifeShared.agencyPlan?.({sessionId:id,decision:'list'});
      op.context.可用生活事件=ctx.cenShuLifeShared.agencyLife?.({sessionId:id,action:'list'});
      const run=randomUUID();
-     const release=ctx.cenShuInnerLife.claimLifeTurn(executionId(),(type,detail)=>log(type,detail,run));
+     const thread=retry?.thread||run;
+     const release=ctx.cenShuInnerLife.claimAgencyActionTurn(agent,thread,()=>active?.run===run&&active.tracking&&!active.ended,(type,detail)=>log(type,detail,run));
      if(!release){waiting('生活会话正在同步或执行，保留本次机会');return;}
      active={id,run,release,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
      const notes=retry?[]:[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
      const p={run,workerId:executionId(),sessionId:id,phase:'prepared',notices:snap.notices.map(x=>x.id),beforeSeq:agent.session?.snapshotEvents?.()?.at(-1)?.seq,cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
-     p.ticket={thread:retry?.thread||run,failures:retry?.failures||0,at:retry?.at||now,reason:retry?.reason||op.reason,
+     p.ticket={thread,failures:retry?.failures||0,at:retry?.at||now,reason:retry?.reason||op.reason,
        changes:[...new Map([...(retry?.changes||[]),...op.changes].map(c=>[c.观察编号||c.id,c])).values()].slice(-48),
        notes:[...new Map([...(retry?.notes||[]),...notes].map(n=>[n.id,n])).values()],
        notices:[...new Map([...(retry?.notices||[]),...snap.notices].map(n=>[n.id,n])).values()].slice(-40)};

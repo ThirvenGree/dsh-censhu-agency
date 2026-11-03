@@ -9,7 +9,7 @@ const profile=path.join(process.env.DSH_HOME||path.join(os.homedir(),'.dsh'),'pr
 const file=path.join(profile,'package.json'),pkg=JSON.parse(fs.readFileSync(file));
 for(const [pkg,min,checks] of [
  ['dsh-cen-shu-life','1.31.1',{'shared-context.js':['agencyLife(request)','agencyPlan(request)','searchEvents(','eventPage(','agencyConversation(']}],
- ['dsh-censhu-inner-life','0.15.1',{'host.js':['claimLifeTurn:','registerAgencyWorker:','agencyDevelop:','agencyReview:','receiveAgencyDiary:',"name:'censhu_question_recall'"]}]
+ ['dsh-censhu-inner-life','0.16.0',{'host.js':['agencyProtocol:2','claimAgencyActionTurn:','registerAgencyWorker:','agencyDevelop:','agencyReview:','receiveAgencyDiary:',"name:'censhu_question_recall'"]}]
 ]){
  const base=path.join(profile,'node_modules',pkg),ver=JSON.parse(fs.readFileSync(path.join(base,'package.json'))).version;
  const v=ver.split('.').map(Number),m=min.split('.').map(Number);const diff=v.findIndex((x,k)=>x!==m[k]);

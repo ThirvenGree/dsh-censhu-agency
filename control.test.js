@@ -139,3 +139,40 @@ test('all three native control implementations are identical',{skip:!process.env
  const canonical=fs.readFileSync(new URL('./control.mjs',import.meta.url),'utf8').replaceAll('\r\n','\n');
  for(const root of [process.env.INNER_PLUGIN_ROOT,process.env.LIFE_PLUGIN_ROOT])assert.equal(fs.readFileSync(path.join(root,'lib/censhu-control.mjs'),'utf8').replaceAll('\r\n','\n'),canonical);
 });
+
+test('actual agency dispatch installs native ledger before followup and reuses the recovered opportunity', {skip:!process.env.INNER_PLUGIN_ROOT}, profile(async(home,dir)=>{
+ const {apply}=await import('./host.js');
+ const lib=path.resolve(process.env.INNER_PLUGIN_ROOT,'lib');
+ const {lifeActionGate}=await import(pathToFileURL(path.join(lib,'action-ledger.js')));
+ const {DisplaySession}=await import(pathToFileURL(path.join(lib,'display-session.js')));
+ const save=(f,v)=>{const dest=path.join(home,f);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,JSON.stringify(v));};
+ const now=Date.parse('2026-11-03T10:00:00+08:00'),clock=Date.now;
+ save('characters/censhu/integration.json',{sessionId:'role'});save('speak-up-config.json',{总开关:true,试运行:false,目标会话:['role']});
+ save('censhu-inner-life/display-session.json',{sessionId:'life'});save('cen-shu-life/life-changes.json',{version:1,generation:'g',sequence:0,items:[]});
+ save('censhu-agency/state.json',{version:1,notes:[],history:[],lastAt:now-3600000,choice:{phase:'retry',sessionId:'role',thread:'first-opportunity',notes:[],changes:[],notices:[]}});
+ const guards=[],hooks={},offs=[];let onEvent,attempts=0,error,finished=false;
+ const main={session:{id:'role'},status:'idle',options:{provider:'fixture',model:'fixture'}};
+ const agent={session:{id:'life'},status:'idle',ctx:{on:(name,fn)=>{hooks[name]=fn;return ()=>{delete hooks[name];};}},async followup(msg){
+  try{
+   onEvent(this.session,{type:'user/message',data:msg});
+   for(let i=0;i<2;i++){
+     const exec={agent:this,name:'write',arguments:{file:'fixture.txt',text:'once'},callId:'call-'+i};
+     if(guards.some(g=>g(exec)))continue;
+     attempts++;fs.appendFileSync(path.join(dir,'fixture.txt'),'once');
+     await hooks['tools/post-execute'](exec,{isError:false},async()=>({kind:'accept'}));
+   }
+   onEvent(this.session,{type:'turn/end',data:{reason:{kind:'completed'}}});
+  }catch(e){error=e;throw e;}
+ },async whenIdle(){finished=true;}};
+ const noop=()=>()=>{};const ctx={agents:{roots:()=>[main,agent]},workspaceRegistry:{},webServer:{register:noop},tools:{register:noop,guard(fn){guards.push(fn);return ()=>guards.splice(guards.indexOf(fn),1);}},on(name,fn){if(name==='session/event')onEvent=fn;return ()=>{};},effect(fn){const off=fn();if(typeof off==='function')offs.push(off);},sessionController:{resolveAgent:async id=>id==='life'?agent:main},cenShuLifeShared:{status:()=>({enabled:true,sessionIds:['role'],intentions:[]}),snapshot:()=>({memories:[]})}};
+ const inner=path.join(home,'censhu-inner-life'),display=new DisplaySession(ctx,inner);
+ const service=lifeActionGate(ctx,inner,display,()=>'life');ctx.cenShuInnerLife={registerAgencyWorker(){},claimAgencyActionTurn:(...args)=>service.claim(...args)};
+ try{Date.now=()=>now;apply(ctx);
+  for(let i=0;i<100&&!finished&&!error;i++)await new Promise(r=>setTimeout(r,5));
+  if(error)throw error;
+  assert.ok(finished,fs.readFileSync(path.join(dir,'state.json'),'utf8').slice(-1200));
+  assert.equal(attempts,1);assert.equal(fs.readFileSync(path.join(dir,'fixture.txt'),'utf8'),'once');
+  const rows=Object.values(JSON.parse(fs.readFileSync(path.join(inner,'action-ledger.json'))).actions);
+  assert.deepEqual(rows.map(r=>[r.runId,r.state]),[['agency:first-opportunity','completed']]);
+ }finally{Date.now=clock;for(const off of offs.reverse())off();service.dispose();}
+}));
