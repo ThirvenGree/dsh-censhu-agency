@@ -87,13 +87,16 @@ export function apply(ctx){
        if(state.lastDisplaySummary!==text){state.lastDisplaySummary=text;log('当前情况与打算',text);}
        snapshotShown=true;
      }
+     let incomingWindow;
      for(const hand of state.awaitingReplies||[]){
        if(hand.role!==id||hand.observed)continue;
-       let messages;try{messages=ctx.cenShuLifeShared.agencyConversation(id);}catch{continue;}
-       const incoming=nextIncoming(messages,hand.ids);
-       if(incoming){hand.observed={id:incoming.id,at:incoming.at};log('青枔后续有来信','在已确认发出的主动消息后收到真实来信；是否回应原话题由模型结合对话判断。',hand.run);}
+       try{incomingWindow??=ctx.cenShuLifeShared.agencyConversation(id);}catch{break;}
+       const incoming=nextIncoming(incomingWindow,hand.ids);
+       if(incoming){hand.observed={id:incoming.id,at:incoming.at,text:String(incoming.text||'').slice(0,350)};log('青枔后续有来信','在已确认发出的主动消息后收到真实来信；是否回应原话题由模型结合对话判断。',hand.run);}
      }
      const snap=situation(home,now);
+     const observed=(state.awaitingReplies||[]).filter(h=>h.role===id&&h.observed).at(-1);
+     if(observed)snap.signature+=JSON.stringify([observed.run,observed.observed.id]);
      rhythm=timing(snap.pace,state,now);
      if(state.generation!==snap.feed.generation){state.generation=snap.feed.generation;state.cursor=snap.feed.sequence;commit();}
      save(lease,{sessionId:id,until:now+90000});
