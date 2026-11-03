@@ -17,7 +17,7 @@ export function agencyDisplay(dir,sessionId){
  const home=path.dirname(dir);
  const records=[...(state.history||[]).filter(r=>r.sessionId===sessionId||(!r.sessionId&&r.run)),...pendingDisplay(home,sessionId)];
  const unique=new Map(records.map(r=>[displayId(r),r]));
- const outcomes=Array.from(unique,([id,r])=>({id,at:r.at,reviewedAt:r.at,displayText:'**主动进行 · '+r.type+'**\n\n'+r.detail+(r.run?'\n\n回合 '+r.run:'')}));
+ const outcomes=Array.from(unique,([id,r])=>({id,at:r.at,reviewedAt:r.at,displayText:'**主动进行 · '+r.type+'**\n\n'+r.detail+(r.thread?'\n\n同一件事 '+r.thread+(r.eventIds?.length?' · 事件 '+r.eventIds.join('、'):''):'')+(r.run?'\n\n回合 '+r.run:'')}));
  const inner=fs.existsSync(path.join(dir,'state.json'))?JSON.parse(fs.readFileSync(path.join(dir,'state.json'),'utf8')):{};
  for(const r of inner.agencyRequests||[]){
    if(r.sourceId!==sessionId||!r.updatedAt)continue;
@@ -27,16 +27,17 @@ export function agencyDisplay(dir,sessionId){
  return outcomes;
 }
 export function receiveDiary(core,request){
- const {run,sessionId,reflection,eventIds=[]}=request;
+ const {run,sessionId,reflection,eventIds=[],observationIds=[]}=request;
  if(!core.config.enabled||!ownsInner(core)||!core.statusSnapshot.sessionIds.includes(sessionId))throw Error('独处未接入当前角色');
  if(typeof reflection!=='string'||!reflection.trim()||reflection.length>1000||!Array.isArray(eventIds)||eventIds.length>8)throw Error('请提交本次感受及最多八个相关事件编号');
- const key='inner:'+createHash('sha256').update(JSON.stringify([sessionId,run,reflection,eventIds])).digest('hex').slice(0,32);
+ if(!Array.isArray(observationIds)||observationIds.length>8||[...eventIds,...observationIds].some(id=>typeof id!=='string'||!id||id.length>250))throw Error('来源编号无效');
+ const key='inner:'+createHash('sha256').update(JSON.stringify([sessionId,run,reflection,eventIds,...(observationIds.length?[observationIds]:[])])).digest('hex').slice(0,32);
  core.record.agencyRequests||=[];
  const previous=core.record.agencyRequests.find(x=>x.id===key);
  if(previous)return {id:key,status:previous.status};
  if(core.record.agencyRequests.filter(x=>x.status==='queued').length>=12)throw Error('独处积压，请稍后再处理');
- const observations=structuredClone((core.record.queue||[]).filter(x=>eventIds.includes(x.data?.eventId)).slice(-16));
- const row={observations,id:key,sourceId:sessionId,run,reflection:reflection.trim(),actions:request.actions||[],eventIds:[...new Set(eventIds)],at:core.now(),status:'queued'};
+ const observations=structuredClone(core.diaryEvidence(core.record.queue||[],eventIds,observationIds).observations);
+ const row={observationIds,observations,id:key,sourceId:sessionId,run,reflection:reflection.trim(),actions:request.actions||[],eventIds:[...new Set(eventIds)],at:core.now(),status:'queued'};
  core.record.agencyRequests=[...core.record.agencyRequests.filter(x=>x.status!=='queued'&&x.status!=='auditing').slice(-75),...core.record.agencyRequests.filter(x=>['queued','auditing'].includes(x.status)),row];
  core.save();return {id:key,status:row.status};
 }
@@ -59,14 +60,14 @@ export async function tickWithAgency(core,tick,args){
  if(core.count().reflections>=core.config.maxReflectionsDaily)return;
  // Ingestion can lag behind submission. Fill missing events only from observations
  // already dated at submission; later stages cannot support an earlier diary.
- const captured=row.observations||[], represented=new Set(captured.map(x=>x.data?.eventId));
- const delayed=core.record.queue.filter(x=>row.eventIds.includes(x.data?.eventId)&&!represented.has(x.data.eventId)&&x.at<=row.at);
- const observations=[...captured,...delayed.slice(Math.max(0,delayed.length-(16-captured.length)))].slice(0,16);
+ const byId=new Map(core.record.queue.map(r=>[r.id,r]));
+ for(const r of row.observations||[])byId.set(r.id,r);
+ const {observations,missingEvents,missingObservations}=core.diaryEvidence([...byId.values()],row.eventIds,row.observationIds||[],row.at);
  const snapshot=core.life.snapshot({sessionId:row.sourceId,purpose:'reflection'});
  const now=core.now(), minutes=Math.min(1430,Math.max(5,Math.round(Number(core.config.minimumMinutes)||30)));
  // The character already chose and wrote this reflection. The existing audit alone decides effects.
  core.record.attempt={id:row.id,agencyRun:row.run,phase:'audit',sourceId:row.sourceId,signature:core.signature(),startedAt:now,generatedAt:now,snapshot,ids:observations.map(x=>x.id),
- input:{observations,previous:[],life:core.statusSnapshot.life,agencyRun:row.run,agencyToolReceipts:row.actions||[]},
+ input:{observations,missingEvents,missingObservations,previous:[],life:core.statusSnapshot.life,agencyRun:row.run,agencyToolReceipts:row.actions||[]},
  candidate:{reflection:row.reflection,feeling:'',intention:'',behaviorHint:'',memoryCandidate:'',shareDecision:'private',action:'none',intentionChanges:[],supersedesIds:[],readingNotes:[],diaryImages:[],validMinutes:1440,nextReflectionMinutes:minutes,windowEndMinutes:minutes+10}};
  row.status='auditing';core.count().reflections++;core.save();return tick(args);
 }

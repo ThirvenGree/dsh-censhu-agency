@@ -73,3 +73,15 @@ test('同一凌晨可自述清醒或疲惫；没有判断时只参考正在发�
    assert.equal(fatigue(),expected);
  }
 }));
+
+test('delivery persists the original opportunity; only an undecided failed turn is offered again',async()=>{
+ const {settleChoice}=await import('./continuity.js');
+ const ticket={thread:'one',notes:[{id:'note',text:'等照片扫完再考虑'}],changes:[{id:'photo'}]};
+ const p={run:'run',sessionId:'s',ticket,notes:[],notices:[]},state={pending:p,notes:[]};
+ commitDelivery(state,p,1000);assert.equal(state.choice.phase,'delivered');
+ for(const [flags,expected] of [[{},'retry'],[{actionStarted:true},'verify'],[{actionStarted:true,confirmed:true},'confirmed'],[{expressed:true},'expressed'],[{confirmed:true,needsVerification:true},'verify']]){
+  const c=Object.assign(structuredClone(state.choice),flags);settleChoice(c,'error',2000);
+  assert.equal(c.phase,expected);assert.equal(c.notes[0].id,'note');assert.equal(c.thread,'one');
+  if(expected==='retry')assert.ok(c.retryAt>2000);
+ }
+});

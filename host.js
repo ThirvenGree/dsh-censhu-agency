@@ -1,6 +1,6 @@
 import {queueDisplay,describePlan,describeActivity} from './timeline.js';
 import {observations,current,replyOrder,inspectAdapters} from './control.mjs';
-import {commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession} from './continuity.js';
+import {settleChoice,commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession} from './continuity.js';
 import {lifeInputs,revise,nextWindow} from './integration.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -30,6 +30,8 @@ export function apply(ctx){
  const bound=()=>read(path.join(home,'characters/censhu/integration.json'),{}).sessionId;
  function log(type,detail,run=active?.run){
    const row={timelineId:randomUUID().replaceAll('-','').slice(0,24),at:Date.now(),run,sessionId:active?.id||bound(),type,detail:String(detail||'').slice(0,1800)};
+   const choice=state.choice?.run===run?state.choice:state.pending?.run===run?state.pending.ticket:null;
+   if(choice){row.thread=choice.thread;row.eventIds=choice.eventIds;}
    state.history.push(row);state.history=state.history.slice(-150);commit();
    try{queueDisplay(home,row);}catch(e){ctx.logger?.warn('时间线暂未排队：'+e.message);}
  }
@@ -102,7 +104,20 @@ export function apply(ctx){
        state.checkedLastRun=true;commit();
      }
      snap.notices=observations(home,id,state.seenNotices,now);
-     const op=opportunity(snap,state,now);
+     const choice=state.choice?.sessionId===id?state.choice:null;
+     if(choice?.phase==='delivered'){
+       const handle=await ctx.sessionController.resolveAgent(id), agent=handle?.agent||handle;
+       const events=agent?.session?.snapshotEvents?.()||[];
+       const start=events.findIndex(e=>e.type==='user/message'&&[e.data?.id,e.data?.source?.agencyId,e.data?.message?.id].includes(choice.run));
+       const end=start<0?-1:events.findIndex((e,n)=>n>start&&e.type==='turn/end');
+       if(agent?.status==='idle'&&end>=0){
+         active={id,run:choice.run,calls:new Map()};for(const e of events.slice(start,end+1))observe(e);active=null;
+       }else{waiting('原回合结果待核实，保留原处境');return;}
+     }
+     if(choice?.phase==='retry'&&choice.retryAt>now){waiting('等待恢复后重新考虑原打算');return;}
+     const retry=choice?.phase==='retry'?choice:null;
+     if(retry)snap.notices=[]; // Fresh notices and the feed cursor remain available after recovery.
+     const op=retry?{changes:[],matched:[],context:snap.context,cursor:state.cursor,generation:state.generation,signature:state.signature,reason:'重新考虑尚未决定的事'}:opportunity(snap,state,now);
      if(!op){status='等待生活变化、自己的提醒或自然空当';return;}
      if([...ctx.workspaceRegistry.archivedSessionIds||[]].some(x=>same(x,id))){status='绑定会话已归档';return;}
      const resolved=await ctx.sessionController.resolveAgent(id), agent=resolved?.agent||resolved;
@@ -123,14 +138,20 @@ export function apply(ctx){
      const receipts=state.history.filter(r=>r.sessionId===id&&['工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(r.type));
      const prior=receipts.at(-1);
      if(prior)op.context.最近一次有执行反馈的主动回合=receipts.filter(r=>r.run===prior.run).slice(-6).map(({at,type,detail})=>({at,type,detail}));
+     if(retry)op.context.上次送达但未决定={处境:retry.reason,变化:retry.changes,打算:retry.notes.filter(n=>state.notes.some(live=>live.id===n.id&&live.revision===n.revision)),通知:retry.notices,发生于:retry.at};
      op.context.私人独处背景=snap.privateContext;
      op.context.自己的当前活动和念头=current(home,id);
      op.context.外部通知仅作资料=snap.notices;
      op.context.生活插件提出但尚未决定的可能打算=ctx.cenShuLifeShared.agencyPlan?.({sessionId:id,decision:'list'});
      op.context.可用生活事件=ctx.cenShuLifeShared.agencyLife?.({sessionId:id,action:'list'});
      const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
-     const notes=[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
+     const notes=retry?[]:[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
      const p={run,sessionId:id,phase:'prepared',notices:snap.notices.map(x=>x.id),beforeSeq:agent.session?.snapshotEvents?.()?.at(-1)?.seq,cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
+     p.ticket={thread:retry?.thread||run,failures:retry?.failures||0,at:retry?.at||now,reason:retry?.reason||op.reason,
+       changes:[...new Map([...(retry?.changes||[]),...op.changes].map(c=>[c.观察编号||c.id,c])).values()].slice(-48),
+       notes:[...new Map([...(retry?.notes||[]),...notes].map(n=>[n.id,n])).values()],
+       notices:[...new Map([...(retry?.notices||[]),...snap.notices].map(n=>[n.id,n])).values()].slice(-40)};
+     p.ticket.eventIds=[...new Set(p.ticket.changes.map(c=>c.id))];
      state.pending=p;
      log('开始',[
        op.reason,...op.changes.map(c=>[c.name,c.stage,c.感受].filter(Boolean).join(' · ')),
@@ -161,15 +182,20 @@ export function apply(ctx){
    }
    if(!active.tracking||active.ended)return;
    if(e.type==='request/header'){const h=d.header||{};const model=typeof h.model==='string'?h.model:h.model?.id;if(model)state.mainModel=model;commit();}
-   if(e.type==='tool/call'){active.calls.set(d.callId,d.name);log('调用工具',d.name);}
+   const choice=state.choice?.run===active.run?state.choice:null;
+   if(e.type==='tool/call'){if(choice&&!['censhu_agency_event_history','censhu_agency_find_event'].includes(d.name)){choice.actionStarted=true;}active.calls.set(d.callId,d.name);log('调用工具',d.name);}
    if(e.type==='tool/result'){
      const tool=active.calls.get(m.toolCallId)||m.toolCallId||'工具';
      const err=m.isError?String(m.content?.find(x=>x.type==='text')?.text||'').split('https://')[0].slice(0,180):'';
      const delivery=sendReceipt(tool,m);
+     if(choice&&delivery){choice.receipt=delivery;if(delivery.type==='QQ 已确认发出')choice.confirmed=true;else choice.needsVerification=true;}
      log(delivery?.type||(m.isError?'工具报错':'工具返回'),(delivery?.detail||tool)+(err?' · '+err:''));
    }
-   if(e.type==='assistant/message'){const t=m.content?.filter?.(b=>b.type==='text').map(b=>b.text).join(' ');if(t)log('岑舒的选择或总结',t);}
-   if(e.type==='turn/end'){active.ended=true;log('回合结束',[d.reason?.kind||'结束',d.reason?.error?.message].filter(Boolean).join(' · '));}
+   if(e.type==='assistant/message'){const t=m.content?.filter?.(b=>b.type==='text').map(b=>b.text).join(' ');if(t){if(choice)choice.expressed=true;log('岑舒的选择或总结',t);}}
+   if(e.type==='turn/end'){active.ended=true;settleChoice(choice,d.reason?.kind,Date.now());
+     if(choice)log('本次处境与结果',[choice.reason,...choice.notes.map(n=>n.text),...choice.changes.map(c=>[c.name,c.stage].filter(Boolean).join(' · ')),...state.history.filter(r=>r.run===active.run&&['想发 · 工具报错','调用工具','工具返回','岑舒的选择或总结','自主活动','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执','工具报错'].includes(r.type)).map(r=>r.type+' · '+r.detail),
+       ({retry:'尚未形成选择，稍后重新交还',confirmed:'平台已有确认，不重复发送',verify:'动作已开始，结果按回执核对，不自动重做',expressed:'已表达选择',completed:'回合正常结束'})[choice.phase]].filter(Boolean).join('\n'));
+     log('回合结束',[d.reason?.kind||'结束',d.reason?.error?.message].filter(Boolean).join(' · '));}
  }
  ctx.on('session/event',(session,e)=>{if(active&&same(session?.id,active.id))observe(e);});
  ctx.effect(()=>ctx.tools.register({
@@ -193,11 +219,11 @@ export function apply(ctx){
  }));
  ctx.effect(()=>ctx.tools.register({
    name:'censhu_agency_diary',description:'自己决定写下独处日记时，提交自己已经形成的感受。关联的本批生活事件可供既有记忆和心情审核。回执显示排队或审核状态。',
-   parameters:{type:'object',required:['reflection'],properties:{reflection:{type:'string',maxLength:1000},eventIds:{type:'array',maxItems:8,items:{type:'string'}}}},
+   parameters:{type:'object',required:['reflection'],properties:{reflection:{type:'string',maxLength:1000},eventIds:{type:'array',maxItems:8,items:{type:'string'}},observationIds:{type:'array',maxItems:8,items:{type:'string'},description:'可引用具体阶段的观察编号'}}},
    output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
    execute(a,exec){
      if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供当前角色主动回合');
-     const receipt=ctx.cenShuInnerLife.receiveAgencyDiary({sessionId:active.id,run:active.run,reflection:a.reflection,eventIds:a.eventIds,actions:state.history.filter(x=>x.run===active.run&&['工具返回','工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(x.type)).slice(-12).map(({at,type,detail})=>({at,type,detail}))});
+     const receipt=ctx.cenShuInnerLife.receiveAgencyDiary({sessionId:active.id,run:active.run,reflection:a.reflection,eventIds:a.eventIds,observationIds:a.observationIds,actions:state.history.filter(x=>x.run===active.run&&['工具返回','工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(x.type)).slice(-12).map(({at,type,detail})=>({at,type,detail}))});
      log('独处日记提交',a.reflection+'\n审核状态：'+receipt.status);return JSON.stringify(receipt);
    }
  }));
@@ -225,6 +251,10 @@ export function apply(ctx){
      log('生活事件回执',({start:'开始',advance:'推进',end:'结束'}[a.action]||a.action)+' · '+(result?.name||a.id)+(result?.stageText?'\n'+result.stageText:''));return JSON.stringify(result);
    }
  }));
+ ctx.effect(()=>ctx.tools.register({name:'censhu_agency_find_event',description:'凭片段搜索生活事件。可给人名、物件等空格分开的关键词，或毫秒时间范围。原文和候选编号用于自行辨认，空结果只代表当前记录未找到。',parameters:{type:'object',properties:{query:{type:'string'},from:{type:'integer'},to:{type:'integer'}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
+   if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供绑定角色的主动回合');
+   return JSON.stringify(ctx.cenShuLifeShared.searchEvents({...a,sessionId:active.id}));
+ }}));
  ctx.effect(()=>ctx.tools.register({name:'censhu_agency_event_history',description:'按生活事件编号回看实际发生的阶段及时间。返回最近八条；需要再往前看时传入 olderBefore。查不到时可保留不确定。',parameters:{type:'object',required:['eventId'],properties:{eventId:{type:'string'},before:{type:'integer',minimum:1}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
    if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供绑定角色的主动回合');
    if(!ctx.cenShuLifeShared.eventPage)throw Error('生活插件尚未提供事件回看接口');

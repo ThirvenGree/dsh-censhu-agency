@@ -15,7 +15,17 @@ export function commitDelivery(state,p,now){
      n.due=null;n.deliveredAt=now;n.deliveredRun=p.run;
    }
  }
+ if(p.ticket)state.choice={...p.ticket,sessionId:p.sessionId,run:p.run,phase:'delivered'};
  delete state.pending;return true;
+}
+export function settleChoice(choice,reason,now){
+ if(!choice||choice.finished)return;
+ choice.finished=true;
+ if(choice.needsVerification){choice.phase='verify';return;}
+ if(reason==='completed'){choice.phase='completed';return;}
+ if(choice.actionStarted||choice.expressed){choice.phase=choice.confirmed?'confirmed':choice.actionStarted?'verify':'expressed';return;}
+ choice.phase='retry';choice.failures=(choice.failures||0)+1;
+ choice.retryAt=now+Math.min(60,5*2**Math.min(4,choice.failures-1))*60000;
 }
 export function snapshotHas(events,run){
  return events?.some(e=>e.type==='user/message'&&(e.data?.id===run||e.data?.source?.agencyId===run));
