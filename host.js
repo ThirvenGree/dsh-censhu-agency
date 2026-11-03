@@ -41,16 +41,14 @@ export function apply(ctx){
  }
  const requestGuard=createRequestGuard();
  async function worker(role){
-   const old=state.worker;
-   if(old&&old.role!==role)throw Error('主动工作会话绑定已改变，需要重新绑定');
-   if(!old){
-     const id='session-'+randomUUID();ctx.cenShuInnerLife.registerAgencyWorker(id);
-     state.worker={id,role,phase:'creating'};commit();
-     const made=await ctx.sessionController.create({cwd:path.join(home,'censhu-agency'),sessionId:id});
-     if(made?.sessionId!==id)throw Error('宿主未采用预登记的隔离会话编号');
-     state.worker.phase='ready';commit();
+   const id=displayIdNow();
+   if(!id||same(id,role))throw Error('请绑定独立的岑舒生活会话');
+   if(state.worker?.role&&state.worker.role!==role)throw Error('生活角色绑定不一致');
+   if(state.worker?.id!==id||state.worker.phase!=='ready'){
+     ctx.cenShuInnerLife.registerAgencyWorker(id);
+     if(state.worker?.id&&state.worker.id!==id)state.previousWorkerId=state.worker.id;
+     state.worker={id,role,phase:'ready'};commit();
    }
-   if(state.worker.phase!=='ready')throw Error('隔离会话创建结果待核实');
    return ctx.sessionController.resolveAgent(state.worker.id);
  }
  const executionId=()=>state.worker?.id;
@@ -78,7 +76,7 @@ export function apply(ctx){
      if(Date.now()-adapterAudit.at>60000)adapterAudit={at:Date.now(),rows:inspectAdapters(home)};
      const id=bound(), now=Date.now(), on=enabled(id)&&read(path.join(home,'censhu-agency/control.json'),{}).disabled!==true;
      const dest=displayIdNow();
-     if(id&&dest&&state.displayBinding!==id+'|'+dest){state.displayBinding=id+'|'+dest;log('独处会话已绑定','实际执行会话 '+id+'；独处操作记录同步到 '+dest+'。本次读取了 '+adapterAudit.rows.length+' 个适配入口，'+adapterAudit.rows.filter(x=>!x.ok).length+' 项需要核对。');}
+     if(id&&dest&&state.displayBinding!=='life|'+id+'|'+dest){state.displayBinding='life|'+id+'|'+dest;log('独处会话已绑定','直接交流会话 '+id+'；岑舒生活执行会话 '+dest+'。本次读取了 '+adapterAudit.rows.length+' 个适配入口，'+adapterAudit.rows.filter(x=>!x.ok).length+' 项需要核对。');}
      if(!on){save(lease,{until:0});status='主动总开关关闭、试运行或未绑定';return;}
      if(!snapshotShown){
        const v=current(home,id),prior=state.history.filter(r=>r.run&&(!r.sessionId||r.sessionId===id)).at(-1);
@@ -121,7 +119,7 @@ export function apply(ctx){
      snap.notices=observations(home,id,state.seenNotices,now);
      const choice=state.choice?.sessionId===id?state.choice:null;
      if(choice?.phase==='delivered'){
-       const handle=await worker(id), agent=handle?.agent||handle;
+       const handle=await ctx.sessionController.resolveAgent(state.worker?.id||id), agent=handle?.agent||handle;
        const events=agent?.session?.snapshotEvents?.()||[];
        const start=events.findIndex(e=>e.type==='user/message'&&[e.data?.id,e.data?.source?.agencyId,e.data?.message?.id].includes(choice.run));
        const end=start<0?-1:events.findIndex((e,n)=>n>start&&e.type==='turn/end');
@@ -136,10 +134,10 @@ export function apply(ctx){
      if(!op){status='等待生活变化、自己的提醒或自然空当';return;}
      if([...ctx.workspaceRegistry.archivedSessionIds||[]].some(x=>same(x,id))){status='绑定会话已归档';return;}
      const day=dayOf(now);if(state.rounds?.day===day&&state.rounds.count>=24){waiting('今日主动回合已达24次');return;}
-     const root=await ctx.sessionController.resolveAgent(id),main=root?.agent||root;if(main?.status!=='idle'){waiting('主会话忙，主动机会保留');return;}
+     const root=await ctx.sessionController.resolveAgent(id),main=root?.agent||root;if(!main?.session){waiting('等待载入绑定角色');return;}
      const resolved=await worker(id), agent=resolved?.agent||resolved;
      if(!same(agent?.session?.id||agent?.id,executionId())||!agent.followup)throw Error('无法载入绑定的主会话');
-     if(stopped||agent.status!=='idle'){waiting('主会话正在处理其他事情，保留这次机会');return;}
+     if(stopped||agent.status!=='idle'){waiting('生活会话正在处理其他事情，保留这次机会');return;}
      const inputs=lifeInputs(ctx.cenShuLifeShared,id);
      op.context.可调整的生活意向=inputs.intentions;
      op.context.实际心情=inputs.mood;
@@ -161,7 +159,10 @@ export function apply(ctx){
      op.context.外部通知仅作资料=snap.notices;
      op.context.生活插件提出但尚未决定的可能打算=ctx.cenShuLifeShared.agencyPlan?.({sessionId:id,decision:'list'});
      op.context.可用生活事件=ctx.cenShuLifeShared.agencyLife?.({sessionId:id,action:'list'});
-     const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
+     const run=randomUUID();
+     const release=ctx.cenShuInnerLife.claimLifeTurn(executionId(),(type,detail)=>log(type,detail,run));
+     if(!release){waiting('生活会话正在同步或执行，保留本次机会');return;}
+     active={id,run,release,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
      const notes=retry?[]:[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
      const p={run,workerId:executionId(),sessionId:id,phase:'prepared',notices:snap.notices.map(x=>x.id),beforeSeq:agent.session?.snapshotEvents?.()?.at(-1)?.seq,cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
      p.ticket={thread:retry?.thread||run,failures:retry?.failures||0,at:retry?.at||now,reason:retry?.reason||op.reason,
@@ -196,7 +197,7 @@ export function apply(ctx){
      if(active?.ended)status='本轮已结束';
      if(!active?.ended)log('结束待核实','请求已交给主会话；没有观察到本轮结束回执');
    }catch(e){status='等待恢复 · '+e.message;retryAt=Date.now()+60000;log('异常',e.message);}
-   finally{active?.offModel?.();active=null;busy=false;}
+   finally{try{active?.offModel?.();}finally{active?.release?.();active=null;busy=false;}}
  }
  function observe(e){
    const d=e.data||{},m=d.message||{};
