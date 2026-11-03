@@ -17,6 +17,15 @@ import {read,save,situation,opportunity,message,contextParts,focusStateKey} from
 export const name='censhu-agency';
 export const inject=['agents','sessionController','workspaceRegistry','tools','webServer','cenShuLifeShared','cenShuInnerLife'];
 const same=(a,b)=>!!a&&!!b&&String(a).replace(/^session-/,'')===String(b).replace(/^session-/,'');
+const readOnlyChoiceTools=new Set(['censhu_agency_context_page','censhu_agency_event_history','censhu_agency_find_event']);
+function isReadOnlyChoiceCall(name,args){
+ if(readOnlyChoiceTools.has(name))return true;
+ if(name!=='censhu_agency_method')return false;
+ if(typeof args==='string'){
+   try{args=JSON.parse(args);}catch{return false;}
+ }
+ return args?.action==='recall';
+}
 export function apply(ctx){
  const home=process.env.DSH_HOME||path.join(os.homedir(),'.dsh');
  const file=path.join(home,'censhu-agency/state.json'),lease=path.join(home,'censhu-agency/owner.json');
@@ -283,7 +292,10 @@ export function apply(ctx){
    if(!active.tracking||active.ended)return;
    if(e.type==='request/header'){const h=d.header||{};const model=typeof h.model==='string'?h.model:h.model?.id;if(model)state.mainModel=model;commit();}
    const choice=state.choice?.run===active.run?state.choice:null;
-   if(e.type==='tool/call'){if(choice&&!['censhu_agency_context_page','censhu_agency_event_history','censhu_agency_find_event'].includes(d.name)){choice.actionStarted=true;}active.calls.set(d.callId,d.name);log('调用工具',describeCall(d.name,d.arguments));}
+   if(e.type==='tool/call'){
+     if(choice&&!isReadOnlyChoiceCall(d.name,d.arguments))choice.actionStarted=true;
+     active.calls.set(d.callId,d.name);log('调用工具',describeCall(d.name,d.arguments));
+   }
    if(e.type==='tool/result'){
      const tool=active.calls.get(m.toolCallId)||m.toolCallId||'工具';
      const err=m.isError?String(m.content?.find(x=>x.type==='text')?.text||'').split('https://')[0].slice(0,180):'';

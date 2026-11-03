@@ -176,3 +176,42 @@ test('actual agency dispatch installs native ledger before followup and reuses t
   assert.deepEqual(rows.map(r=>[r.runId,r.state]),[['agency:first-opportunity','completed']]);
  }finally{Date.now=clock;for(const off of offs.reverse())off();service.dispose();}
 }));
+
+for(const [scenario,calls,phase] of [
+ ['recall object',[['censhu_agency_method',{action:'recall'}]],'retry'],
+ ['recall JSON',[['censhu_agency_method','{"action":"recall"}']],'retry'],
+ ['page read',[['censhu_agency_context_page',{}]],'retry'],
+ ['choose after recall',[['censhu_agency_method',{action:'recall'}],['censhu_agency_method',{action:'choose'}]],'verify'],
+ ['recall after write',[['write',{file:'note.txt'}],['censhu_agency_method',{action:'recall'}]],'verify'],
+ ['invalid method arguments',[['censhu_agency_method','{invalid']],'verify'],
+]){
+ test('recover a failed tool round from host events: '+scenario,profile(async(home,dir)=>{
+  const {apply}=await import('./host.js');
+  const put=(file,data)=>{const dest=path.join(home,file);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,JSON.stringify(data));};
+  const run='opportunity-1',now=Date.parse('2026-11-03T10:00:00+08:00');
+  put('characters/censhu/integration.json',{sessionId:'role'});
+  put('speak-up-config.json',{总开关:true,试运行:false,目标会话:['role']});
+  put('censhu-inner-life/display-session.json',{sessionId:'life'});
+  put('cen-shu-life/life-changes.json',{version:1,generation:'g',sequence:0,items:[]});
+  put('censhu-agency/state.json',{version:1,generation:'g',lastAt:now,notes:[],history:[],worker:{id:'life',role:'role'},choice:{run,sessionId:'role',phase:'delivered',notes:[],changes:[]}});
+  const events=[{type:'user/message',data:{id:run}}];
+  for(const [i,[name,args]] of calls.entries()){
+   const callId='call-'+i;
+   events.push({type:'tool/call',data:{name,arguments:args,callId}},{type:'tool/result',data:{message:{toolCallId:callId,isError:true,content:[{type:'text',text:'timeout'}]}}});
+  }
+  events.push({type:'turn/end',data:{reason:{kind:'error'}}});
+  const worker={status:'idle',session:{id:'life',snapshotEvents:()=>events}};
+  const offs=[],noop=()=>()=>{},oldClock=Date.now;
+  const ctx={agents:{roots:()=>[]},workspaceRegistry:{},webServer:{register:noop},tools:{guard:noop,register:noop},on:noop,
+   sessionController:{resolveAgent:async()=>worker},cenShuLifeShared:{},cenShuInnerLife:{},
+   effect(fn){const off=fn();if(typeof off==='function')offs.push(off);}};
+  try{
+   Date.now=()=>now;apply(ctx);await new Promise(resolve=>setImmediate(resolve));
+   const saved=JSON.parse(fs.readFileSync(path.join(dir,'state.json')));
+   assert.equal(saved.choice.phase,phase);
+   assert.equal(!!saved.choice.actionStarted,phase==='verify');
+   assert.equal(saved.choice.retryAt,phase==='retry'?now+300000:undefined);
+   assert.ok(saved.history.some(r=>r.type==='工具报错'));
+  }finally{Date.now=oldClock;for(const off of offs.reverse())off();}
+ }));
+}
