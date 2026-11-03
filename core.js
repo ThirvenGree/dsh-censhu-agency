@@ -70,6 +70,8 @@ export function message(op,notes,id,includeData=true){
 
 export function contextParts(op,notes,run,pages){
  const parts=[{required:true,text:message(op,notes,run,false).content[0].text}];
+ const innerSources=new Set(['最近的独处念头','兴趣','私人独处背景','可回忆的经历方法']);
+ const lifeSources=new Set(['手头的事','心情','可调整的生活意向','生活插件提出但尚未决定的可能打算','天气','实际心情','心情维度']);
  const high=new Set(['处境摘要','最近一次有执行反馈的主动回合','上次主动联系','刚发生','自己留的线索','当前自述','自己的当前活动和念头']);
  const sources={...op.context,刚发生:op.changes,自己留的线索:notes};
  for(const [section,value] of Object.entries(sources)){
@@ -81,7 +83,7 @@ export function contextParts(op,notes,run,pages){
    if(section==='手头的事'&&row?.id)key='life:event:'+row.id+':'+row.进度;
    if(section==='最近的独处念头'&&row?.id)key='diary:'+row.id;
    if(section==='自己的当前活动和念头')key='agency:current';
-   parts.push({key,priority:high.has(section)?89:section==='已有记忆'?60:46,text:section+'：'+JSON.stringify(row)});
+   parts.push({key,owner:innerSources.has(section)?'inner':lifeSources.has(section)?'life':'agency',priority:high.has(section)?89:section==='已有记忆'?60:46,text:section+'：'+JSON.stringify(row)});
   }
  }
  return parts;

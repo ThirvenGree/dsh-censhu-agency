@@ -40,10 +40,9 @@ test('角色预算联用：同一阶段使用一份原文，独处读回执只�
  const {acknowledgeContext}=await import(pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT,'lib/assembly-receipt.js')));
  const {contextParts}=await import('./core.js');
  const pages={},op={context:{手头的事:[{id:'evt1',进度:'整理票根'}],备用文档:'折叠的私有资料'.repeat(2400)},changes:[]};
- const budget=roleContextBudget(),agent={session:{id:'isolated',requestContext:()=>({model:'test',contextWindow:65536})}};
- const lifeParts=[{key:'life:event:evt1:整理票根',priority:83,text:'角色生活模拟记录，阶段：整理票根'},{text:'【岑舒独处后的临时状态】[{"id":"entry-ok"}]。这是你自己的生活感受与打算',priority:70}];
- const stage=budget.add({contexts:[],sections:[],tools:[]},agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),'资料可按需展开');
- const final=budget.add(stage,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆');assert.equal(pages.备用文档[0],op.context.备用文档);
+ const budget=roleContextBudget({plan:input=>({reason:'本轮关注事件与日记',allocations:Object.fromEntries(['life','inner','agency'].map(k=>[k,{tokens:3000,reason:'当前任务'}])),order:input.candidates.filter(x=>!x.required&&(/角色生活模拟|临时状态/.test(x.excerpt))).map(x=>x.id)})}),agent={session:{id:'isolated',requestContext:()=>({model:'test',contextWindow:65536})}};
+ const lifeParts=[{key:'life:event:evt1:整理票根',text:'角色生活模拟记录，阶段：整理票根'},{owner:'inner',text:'【岑舒独处后的临时状态】[{"id":"entry-ok"}]。这是你自己的生活感受与打算'}];
+ const final=await budget.assemble(agent,()=>budget.assemble(agent,()=>({contexts:[],sections:[],tools:[]}),v=>budget.add(v,agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),'资料可按需展开')),v=>budget.add(v,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆'));assert.equal(pages.备用文档[0],op.context.备用文档);
  assert.doesNotMatch(JSON.stringify(final),/折叠的私有资料/);assert.equal((JSON.stringify(final).match(/整理票根/g)||[]).length,1);
  const seen=[];acknowledgeContext({context:()=>({ids:['entry-ok','not-admitted']}),seen:(_s,ids)=>seen.push(...ids)},'isolated',final.contexts);
  assert.deepEqual(seen,['entry-ok']);
