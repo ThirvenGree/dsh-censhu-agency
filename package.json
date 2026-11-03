@@ -1,0 +1,37 @@
+{
+  "name": "dsh-censhu-agency",
+  "version": "1.1.0",
+  "type": "module",
+  "main": "host.js",
+  "exports": {
+    ".": "./host.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ],
+      "external": [
+        "react"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "description": "岑舒主动进行：双模型处境判断与可恢复的生活意向",
+  "files": [
+    "host.js",
+    "core.js",
+    "client.js",
+    "integration.js",
+    "install.mjs",
+    "cordis.patch.yml",
+    "README.md"
+  ]
+}

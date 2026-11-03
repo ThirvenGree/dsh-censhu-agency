@@ -1,0 +1,26 @@
+# 主动进行
+生活、观看与独处提供事实和进度。Gemini 合并事实，DSH 的绑定主会话决定是否行动并在原工具循环中读取结果。沿用主动搭话的总开关、试运行和绑定目标，凌晨 2 至 6 点不发起机会。界面记录主会话报告与工具返回，两者不能替代平台的实际送达回执。
+ 
+设计参考：
+- [Thoughtful Agents](https://github.com/xybruceliu/thoughtful-agents)：想法的形成与表达时机分开。
+- [Generative Agents](https://arxiv.org/abs/2304.03442)：计划可随观察和相关记忆调整。
+- [Threaded Cognition](https://doi.org/10.1037/0033-295X.115.1.101)：能否穿插取决于动作争用的资源。
+- [Everyday Dwelling with WhatsApp](https://www.microsoft.com/en-us/research/publication/everyday-dwelling-with-whatsapp/)：亲近的人用零碎的消息保持联系，允许沉默。
+- [自主切换任务](https://doi.org/10.1016/j.chb.2013.01.040)：受挫或进展本身可以引起主动转移注意。
+- [工作中如何恢复未完任务](https://doi.org/10.1287/orsc.2017.1184)：切走前保留做到哪里和恢复线索。
+这些是设计参考，未引入论文中的固定频率或通过率。
+
+## 安装与使用
+
+以 Node.js 22 运行。安装匹配的岑舒生活 v2 联动接口、独处插件和带动态处境读取器的主动搭话插件，配置并绑定角色会话。在本目录运行 `node install.mjs`，重启 DSH。安装程序会把当前目录链接到 desktop profile，请保留目录。已有安装可以在相同目录更新源码。与旧版 bridge 和主动搭话的互斥接管需要本机主动策略支持 `agencyOwns`。状态文件和密钥保存在用户机器。
+
+Gemini 整理处境，绑定 DSH 会话里的模型独立判断并执行。使用 DeepSeek 的会话可以按真实进展推迟或提前下次自然空当，也可以调用 `censhu_agency_arrange` 调整已有生活意向。新的生活事件和到期提醒仍可提前唤起。生活服务会检查版本、记录实际权重变化或返回拒绝理由。平台是否送达以平台回执为准。
+
+## 1.1 实现参考
+
+- [CoALA](https://arxiv.org/abs/2309.02427) 区分外部行动和内部记忆操作。插件将临时提醒与有版本的生活意向调整分开记录。
+- [ReAct](https://arxiv.org/abs/2210.03629) 让行动结果参与下一步选择。生活工具把实际调整结果返回同一角色回合。
+- [LangGraph 的中断与恢复](https://docs.langchain.com/oss/python/langgraph/interrupts) 说明恢复可能重放操作。对同一回合、意向版本和变更内容使用稳定的回执编号，回读旧回合只补记录。
+
+在本目录运行 `npm test`。设置 `LIFE_PLUGIN_ROOT` 为生活插件源码目录后，测试还会在临时目录启动真实生活引擎，核对权重、重复提交和过期版本。GitHub CI 使用固定的生活插件提交。
+
