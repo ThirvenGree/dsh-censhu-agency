@@ -7,6 +7,7 @@ function data(dir,name,fallback){
  catch(e){if(e.code==='ENOENT')return fallback;throw e;}
 }
 export function ownsInner(core){
+ const control=data(core.dir,'control',{});if(control.version===1&&core.statusSnapshot?.sessionIds?.includes(control.sessionId))return true;
  const owner=data(core.dir,'owner',{});return owner.until>core.now()&&core.statusSnapshot?.sessionIds?.includes(owner.sessionId);
 }
 export function agencyDisplay(dir,sessionId){

@@ -7,6 +7,7 @@ export function matchingNotes(notes,changes,now){
 }
 export function commitDelivery(state,p,now){
  if(state.pending?.run!==p.run)return false;
+ state.seenNotices=[...new Set([...(state.seenNotices||[]),...(p.notices||[])])].slice(-4000);
  state.cursor=p.cursor;state.generation=p.generation;state.signature=p.signature;state.lastAt=p.at;
  if(state.nextConsiderAt===p.previousWindow)state.nextConsiderAt=null;
  for(const n of state.notes){

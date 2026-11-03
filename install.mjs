@@ -1,3 +1,4 @@
+import {installControl} from './control-install.mjs';
 import {installPlanningAdapter} from './adapter.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -14,3 +15,5 @@ if(!fs.existsSync(file+'.before-agency.bak'))fs.copyFileSync(file,file+'.before-
 pkg.dependencies[name]='link:'+root.replaceAll('\\','/');const bundles=pkg.dsh.profile.bundles;
 if(!bundles.includes(name))bundles.push(name);
 fs.writeFileSync(file+'.agency.tmp',JSON.stringify(pkg,null,2));fs.renameSync(file+'.agency.tmp',file);
+
+console.log('集中行动适配',installControl(profile));
