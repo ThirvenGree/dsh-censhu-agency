@@ -123,6 +123,7 @@ export function apply(ctx){
      op.context.私人独处背景=snap.privateContext;
      op.context.自己的当前活动和念头=current(home,id);
      op.context.外部通知仅作资料=snap.notices;
+     op.context.生活插件提出但尚未决定的可能打算=ctx.cenShuLifeShared.agencyPlan?.({sessionId:id,decision:'list'});
      op.context.可用生活事件=ctx.cenShuLifeShared.agencyLife?.({sessionId:id,action:'list'});
      const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
      const notes=[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
@@ -170,11 +171,17 @@ export function apply(ctx){
  ctx.on('session/event',(session,e)=>{if(active&&same(session?.id,active.id))observe(e);});
  ctx.effect(()=>ctx.tools.register({
    name:'censhu_agency_arrange',description:'主动回合中，安排下一次自然空当或按刚看到的版本调整生活插件的意向。实际变化以返回的回执为准。',
-   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['pace','revise']},minutes:{type:'integer'},id:{type:'string'},generatedAt:{type:'number'},revision:{type:'integer'},priority:{type:'number'},direction:{type:'string',enum:['raise','lower','cancel']},reason:{type:'string'}}},
+   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['pace','revise','adopt','dismiss']},minutes:{type:'integer'},mergeSeconds:{type:'integer',minimum:1,maximum:3600},id:{type:'string'},generatedAt:{type:'number'},revision:{type:'integer'},priority:{type:'number'},direction:{type:'string',enum:['raise','lower','cancel']},reason:{type:'string'}}},
    output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
    execute(a,exec){
      if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供正在进行的角色主动回合');
-     if(a.action==='pace'){state.nextConsiderAt=nextWindow(a.minutes,Date.now());log('主模型安排节奏',a.minutes+' 分钟后再考虑'+(a.reason?' · '+a.reason:''));return JSON.stringify({nextConsiderAt:state.nextConsiderAt});}
+     if(a.action==='pace'){const until=nextWindow(a.minutes,Date.now());
+       if(a.mergeSeconds!==undefined&&(!Number.isInteger(a.mergeSeconds)||a.mergeSeconds<1||a.mergeSeconds>3600))throw Error('合并窗口须为1至3600秒');
+       state.nextConsiderAt=until;state.pacingChoice={mergeSeconds:a.mergeSeconds,until,reason:String(a.reason||'').slice(0,250)};log('主模型安排节奏',a.minutes+' 分钟后再考虑'+(a.reason?' · '+a.reason:''));return JSON.stringify({nextConsiderAt:state.nextConsiderAt});}
+     if(['adopt','dismiss'].includes(a.action)){
+       const receipt=ctx.cenShuLifeShared.agencyPlan({sessionId:active.id,run:active.run,id:a.id,revision:a.revision,generatedAt:a.generatedAt,decision:a.action});
+       log(a.action==='adopt'?'采纳生活打算':'放下生活候选',a.id+' · '+(a.reason||''));return JSON.stringify(receipt);
+     }
      if(a.action!=='revise')throw Error('未知操作');
      const receipt=revise(ctx.cenShuLifeShared,active.id,active.run,a);
      log('生活意向回执',receipt.accepted.map(x=>x.effectNote||x.effectStatus).join('，'));
@@ -193,7 +200,7 @@ export function apply(ctx){
  }));
  ctx.effect(()=>ctx.tools.register({
    name:'censhu_agency_activity',description:'在主动回合中决定正在做什么、心里挂着什么，或开始、推进、结束生活事件。浏览本机网页、看视频或联系他人时用实际工具，活动描述不会替代工具执行。',
-   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['set','start','advance','end','pet','interests','thoughts','douyin-reply']},activity:{type:'string'},thought:{type:'string'},minutes:{type:'integer'},id:{type:'string'},stage:{type:'integer'}}},
+   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['set','start','advance','end','pet','interests','thoughts','inner-state','growth','personality','douyin-reply']},activity:{type:'string'},thought:{type:'string'},minutes:{type:'integer'},id:{type:'string'},stage:{type:'integer'}}},
    output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
    async execute(a,exec){
      if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供绑定角色的主动回合');
@@ -207,6 +214,7 @@ export function apply(ctx){
        if(!a.thought?.trim()||a.thought.length>500)throw Error('请提供这次想说的简短台词');
        const result=await petApi?.agencySay?.(a.thought);if(!result?.ok)throw Error(result?.message||'Pet 未接受台词');log('桌宠已接受台词',a.thought);return JSON.stringify(result);
      }
+     if(['inner-state','growth','personality'].includes(a.action)){const result=await ctx.cenShuInnerLife.agencyDevelop(a.action);log('主动整理',a.action+' · '+(result.status||'等待结果'));return JSON.stringify({status:result.status});}
      if(['interests','thoughts'].includes(a.action)){const result=await ctx.cenShuInnerLife.agencyReview(a.action);log('主动整理',a.action);return JSON.stringify({status:result.status||'完成'});}
      if(a.action==='start'&&!/^[a-zA-Z0-9_:\-]{1,128}$/.test(a.id||''))throw Error('生活模板编号无效');
      const result=ctx.cenShuLifeShared.agencyLife({sessionId:active.id,action:a.action,templateId:a.id,eventId:a.action==='start'?'agency:'+active.run+':'+a.id:a.id,stage:a.stage});
@@ -222,7 +230,7 @@ export function apply(ctx){
    if(a.action==='remove'){const prior=state.notes.find(n=>n.id===a.id);state.notes=state.notes.filter(n=>n.id!==a.id);if(prior)log('放下或完成打算',prior.text+(a.text?' · '+String(a.text).slice(0,200):''));}
    return JSON.stringify(state.notes);
  }}));
- ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,rhythm,adapterAudit,current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,mainModel:selectedModel()||state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,rhythm,adapterAudit,scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,mainModel:selectedModel()||state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
  const timer=setInterval(()=>{if(busy&&active&&enabled(active.id))save(lease,{sessionId:active.id,until:Date.now()+90000});void tick();},20000);timer.unref?.();void tick();
  ctx.effect(()=>()=>{stopped=true;clearInterval(timer);save(lease,{until:0});});
 }

@@ -13,7 +13,7 @@ export function installControl(profile){
    const root=path.join(modules,pkg);if(!fs.existsSync(root))return;
    const dest=path.join(root,file),row=plans.find(x=>x.dest===dest)||{dest,src:fs.readFileSync(dest,'utf8').replaceAll('\r\n','\n')};
    if(!plans.includes(row))plans.push(row);
-   if(row.src.includes(to)||to.includes("if(agencyOwner()){agencySignal('抖音来信'")&&row.src.includes('mark.agencyOffer={id,last:'))return;
+   if(to.includes('agencyDevelop:async(part)=>')&&row.src.includes('agencyDevelop:async(part)=>')||to.startsWith('  agencyLife(request){')&&row.src.includes('  agencyLife(request){')||row.src.includes(to)||to.includes("if(agencyOwner()){agencySignal('抖音来信'")&&row.src.includes('mark.agencyOffer={id,last:'))return;
    if(row.src.split(from).length!==2)throw Error('请重新适配 '+pkg+'/'+file+'：'+from.slice(0,65));
    row.src=row.src.replace(from,()=>to);
  }
@@ -44,6 +44,14 @@ export function installControl(profile){
  patch('dsh-cen-shu-life','lib/life-director.js','this.record.lastResult={decision:v.decision','this.record.lastResult=agencyOwner(d.sessionId)?{decision:"mood-only",progress:[],intentions:null}:{decision:v.decision');
  patch('dsh-cen-shu-life','lib/timed-events.js','先选择decision=proceed','只描述到来的外部情况和自然感受。岑舒是否行动、想做什么以及是否联系谁，由主动进行在之后决定，不能把自愿行动写成已经发生。先选择decision=proceed');
  patch('dsh-cen-shu-life','lib/engine.js','if(this.director){this.advance(now);return;}','if(this.director||agencyOwner(this.config.sessionIds[0])){this.advance(now);return;}');
+ const shared=path.join(modules,'dsh-cen-shu-life/lib/shared-context.js');
+ if(fs.existsSync(shared)){
+   const original=fs.readFileSync(shared,'utf8').replaceAll('\r\n','\n');
+   const pairs=original.match(/  agencyLife\(request\)\{[\s\S]*?  agencyPlan\(request\)\{[\s\S]*?\n  \},\n/g)||[];
+   // Normalize only the identical duplicate emitted by the earlier installer.
+   let src=original;if(pairs.length>1){if(!pairs.every(x=>x===pairs[0]))throw Error('生活接口重复且不一致');src=original.replace(pairs.join(''),pairs[0]);}
+   plans.push({dest:shared,src});
+ }
  patch('dsh-cen-shu-life','lib/shared-context.js','  notifyInnerState({id})',`  agencyLife(request){
    const id=resolve(request);if(!agencyOwner(id))throw Error('主动控制未绑定');
    const now=engine.now(), c=clock(now,engine.config.timezone);
@@ -80,13 +88,29 @@ export function installControl(profile){
           }
           this.qualifyNativeBacklog(contact, mark, snapshot, messages);`);
  patch('dsh-douyin-browser-local','autonomous-watch.mjs','  start({ startSession = true, maxRequests: _legacyMaxRequests } = {}, { explicit = false } = {}) {','  start({ startSession = true, maxRequests: _legacyMaxRequests } = {}, { explicit = false } = {}) {\n    if(agencyOwner())throw Error("主动进行已接管观看选择，请用逐步浏览、观察、补看和互动工具");');
+ patch('dsh-cen-shu-life','lib/life-intentions.js','.filter(x=>x&&safe(x.text)',".filter(x=>x&&(!agencyOwner(engine.config.sessionIds[0])||x.agencyDecision==='adopt'||x.adjustedAt&&x.agencyDecision!=='dismiss')&&safe(x.text)");
+ patch('dsh-cen-shu-life','lib/shared-context.js','  notifyInnerState({id})', `  agencyPlan(request){
+   const id=resolve(request);if(!agencyOwner(id))throw Error('当前会话未接手');
+   return request.decision==='list'?planCandidates(engine,engine.now()):choosePlan(engine,request);
+  },
+  notifyInnerState({id})`);
+ patch('dsh-censhu-inner-life','lib/personal-growth.js',' async tick(){',' async tick(agencyRequested=false){');
+ patch('dsh-censhu-inner-life','lib/personal-growth.js',' const evidence=c.life.projectEvidence', " if(agencyOwner(c.sourceId())&&!agencyRequested&&!r.attempt?.agencyApproved&&!['audit','apply'].includes(r.attempt?.phase))return;\n const evidence=c.life.projectEvidence");
+ patch('dsh-censhu-inner-life','lib/personal-growth.js',"r.attempt={id:'growth:'+randomUUID()","r.attempt={agencyApproved:agencyRequested,id:'growth:'+randomUUID()");
+ patch('dsh-censhu-inner-life','lib/personality.js','   if(r.configurationError)return;', "   if(agencyOwner(c.sourceId())&&!force&&!r.attempt?.agencyApproved&&!['audit','apply'].includes(r.attempt?.phase))return;\n   if(r.configurationError)return;");
+ patch('dsh-censhu-inner-life','lib/personality.js',"r.attempt={id:'personality:'+randomUUID()","r.attempt={agencyApproved:force,id:'personality:'+randomUUID()");
+ patch('dsh-censhu-inner-life','lib/host.js','receiveAgencyDiary:request=>receiveDiary(core,request),context:',"receiveAgencyDiary:request=>receiveDiary(core,request),agencyDevelop:async(part)=>{if(part==='growth'){await core.personalGrowth.tick(true);return core.personalGrowth.view();}if(part==='personality'){await core.personality.tick(true);return core.personality.view();}throw Error('未知发展项');},context:");
+ patch('dsh-bili-whale','tools/commands/whale-night.mjs',"if (cmd === 'plan') {","if (agencyOwner()&&['plan','clock','mark'].includes(cmd)&&!args.includes('--test')){console.log('WHALE_DONE · 观看机会由主动进行判断');} else if (cmd === 'plan') {");
+ patch('dsh-censhu-inner-life','lib/inner-state.js',' async tick(force=false){',' async tick(force=false){\n   if(agencyOwner(this.c.sourceId())&&!force)return;');
+ patch('dsh-censhu-inner-life','lib/host.js',"if(part==='growth'){await core.personalGrowth.tick(true);","if(part==='inner-state'){await core.innerState.tick(true);return core.innerState.view();}if(part==='growth'){await core.personalGrowth.tick(true);");
  for(const r of plans){
    const imp="import {owner as agencyOwner,signal as agencySignal,current as agencyCurrent} from './censhu-control.mjs';";
    if(!r.src.includes(imp))r.src=imp+'\n'+r.src;
    if((r.dest.endsWith('chat-service.mjs')||r.dest.endsWith('spark-service.mjs'))&&!r.src.includes('takeReply as agencyTakeReply'))r.src="import {takeReply as agencyTakeReply} from './censhu-control.mjs';\n"+r.src;
+   if(r.dest.endsWith('shared-context.js')&&!r.src.includes("from './agency-plan-choice.js'"))r.src="import {planCandidates,choosePlan} from './agency-plan-choice.js';\n"+r.src;
    const check=spawnSync(process.execPath,['--input-type=module','--check'],{input:r.src,encoding:'utf8'});if(check.status!==0)throw Error(r.dest+' '+check.stderr);
  }
- for(const {dest,src} of plans){fs.copyFileSync(control,path.join(path.dirname(dest),'censhu-control.mjs'));if(fs.readFileSync(dest,'utf8')===src)continue;if(!fs.existsSync(dest+'.before-agency-control.bak'))fs.copyFileSync(dest,dest+'.before-agency-control.bak');fs.writeFileSync(dest+'.agency-tmp',src);fs.renameSync(dest+'.agency-tmp',dest);}
+ for(const {dest,src} of plans){if(dest.endsWith('shared-context.js'))fs.copyFileSync(fileURLToPath(new URL('./plan-choice.js',import.meta.url)),path.join(path.dirname(dest),'agency-plan-choice.js'));fs.copyFileSync(control,path.join(path.dirname(dest),'censhu-control.mjs'));if(fs.readFileSync(dest,'utf8')===src)continue;if(!fs.existsSync(dest+'.before-agency-control.bak'))fs.copyFileSync(dest,dest+'.before-agency-control.bak');fs.writeFileSync(dest+'.agency-tmp',src);fs.renameSync(dest+'.agency-tmp',dest);}
  const dir=path.join(home,'censhu-agency');fs.mkdirSync(dir,{recursive:true});
  fs.writeFileSync(path.join(dir,'control.json.tmp'),JSON.stringify({version:1,sessionId:session,adapters:plans.map(x=>path.relative(modules,x.dest)),hashes:Object.fromEntries(plans.map(x=>[path.relative(modules,x.dest),createHash('sha256').update(fs.readFileSync(x.dest)).digest('hex')])),at:Date.now()}));fs.renameSync(path.join(dir,'control.json.tmp'),path.join(dir,'control.json'));
  return plans.length;

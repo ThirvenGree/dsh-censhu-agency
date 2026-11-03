@@ -46,3 +46,15 @@ test('真实生活接口只接受角色选择的合法候选，读当前所做�
  fs.writeFileSync(path.join(dir,'current.json'),JSON.stringify({sessionId:'role',until:Date.now()+60000,activity:'翻照片',thought:'窗框怎么连起来的'}));
  assert.equal(engine.life().activity,'翻照片');assert.equal(engine.life().currentThought,'窗框怎么连起来的');
 }));
+test('生活候选不进入选题，必须主动采纳；放下与重复提交都可核对',{skip:!process.env.AGENCY_PROFILE},profile(async(home)=>{
+ const dir=path.join(process.env.AGENCY_PROFILE,'node_modules/dsh-cen-shu-life/lib');
+ const load=n=>import(pathToFileURL(path.join(dir,n+'.js')));
+ const {LifeEngine}=await load('engine'),{sharedLifeContext}=await load('shared-context');
+ const e=new LifeEngine({home,now:()=>1700000000000});e.saveConfig({sessionIds:['role'],lifePlanningEnabled:true,contentEvolutionEnabled:true});
+ const now=e.now();e.content={expiresAt:now+90000,intentions:['茶','书'].map((x,i)=>({id:String(i),text:x,priority:1,validFrom:now-10,expiresAt:now+60000,generatedAt:now-20,revision:0,templateIds:[]}))};
+ e.persistContent=()=>e.write('fixture-intentions.json',e.content);
+ const life=sharedLifeContext(e,{}),send=(decision,id)=>life.agencyPlan({decision,id,run:'r',generatedAt:now-20,revision:0,sessionId:'role'});
+ assert.equal(send('list').length,2);assert.equal(life.status().intentions.length,0);
+ send('adopt','0');assert.equal(send('adopt','0').replayed,true);send('dismiss','1');assert.equal(send('list').length,0);
+ assert.deepEqual(life.status().intentions.map(x=>x.text),['茶']);assert.throws(()=>send('dismiss','0'));
+}));

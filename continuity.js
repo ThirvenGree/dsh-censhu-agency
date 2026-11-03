@@ -21,8 +21,8 @@ export function snapshotHas(events,run){
  return events?.some(e=>e.type==='user/message'&&(e.data?.id===run||e.data?.source?.agencyId===run));
 }
 export function timing(pace={},state,now){
- const mergeSeconds=Math.max(30,Math.min(600,Number(pace.innerMergeSeconds)||90));
- const naturalMinutes=Math.max(10,Math.min(180,Number(pace.innerMinimumMinutes)||45));
+ const mergeSeconds=Math.max(1,Math.min(3600,(state.pacingChoice?.until>now&&state.pacingChoice.mergeSeconds)||Number(pace.innerMergeSeconds)||90));
+ const naturalMinutes=Math.max(1,Math.min(1440,Number(pace.innerMinimumMinutes)||45));
  return {mergeSeconds,naturalMinutes,nextNaturalAt:state.nextConsiderAt||(state.lastAt||now)+naturalMinutes*60000,
  source:state.nextConsiderAt?'DSH 主模型':pace.innerMinimumMinutes?'Gemini 生活节奏':'本地备用间隔'};
 }
