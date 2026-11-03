@@ -117,3 +117,20 @@ test('focus batches ordinary stages without consuming them, but new events, remi
  assert.ok(opportunity({...snap,notices:[{id:'x'}]},state,now));assert.ok(opportunity(snap,{...state,notes:[{id:'n',due:now-1}]},now));
  assert.ok(opportunity({...snap,feed:{...snap.feed,items:[{...stage,kind:'event-end'}]}},state,now));
 });
+
+test('paused host keeps the lease until explicit guarded release and reclaims without enabling actions',profile(async(home,dir)=>{
+ const {apply}=await import('./host.js'),routes=new Map(),dispose=[];
+ const write=(file,obj)=>{const dest=path.join(home,file);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,JSON.stringify(obj));};
+ write('characters/censhu/integration.json',{sessionId:'role'});write('speak-up-config.json',{总开关:false});
+ const noop=()=>()=>{};
+ const ctx={agents:{roots:()=>[]},tools:{guard:noop,register:noop},webServer:{register:r=>{routes.set(r.path,r.handler);return ()=>{};}},on:noop,effect:f=>{const off=f();if(typeof off==='function')dispose.push(off);},cenShuLifeShared:{},cenShuInnerLife:{}};
+ try{
+ apply(ctx);
+ const call=(name,method,token)=>{let code,body;const req={headers:{host:'localhost:3388','x-censhu-csrf':token},method,socket:{localPort:3388}};
+ routes.get('/censhu-agency/'+name)(req,{writeHead:v=>code=v,end:v=>body=v});return {code,value:body?JSON.parse(body):null};};
+ const state=call('state','GET').value;assert.equal(state.ownership.enabled,false);assert.equal(owner('role'),true);
+ assert.equal(call('release','POST','wrong').code,403);assert.equal(owner('role'),true);
+ assert.equal(call('release','POST',state.csrf).code,200);assert.equal(owner('role'),false);
+ assert.equal(call('enable','POST',state.csrf).value.enabled,false);assert.equal(owner('role'),true);
+ }finally{for(const off of dispose.reverse())off();}
+}));
