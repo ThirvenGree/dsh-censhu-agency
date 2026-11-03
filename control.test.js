@@ -134,3 +134,8 @@ test('paused host keeps the lease until explicit guarded release and reclaims wi
  assert.equal(call('enable','POST',state.csrf).value.enabled,false);assert.equal(owner('role'),true);
  }finally{for(const off of dispose.reverse())off();}
 }));
+
+test('all three native control implementations are identical',{skip:!process.env.INNER_PLUGIN_ROOT||!process.env.LIFE_PLUGIN_ROOT},()=>{
+ const canonical=fs.readFileSync(new URL('./control.mjs',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ for(const root of [process.env.INNER_PLUGIN_ROOT,process.env.LIFE_PLUGIN_ROOT])assert.equal(fs.readFileSync(path.join(root,'lib/censhu-control.mjs'),'utf8').replaceAll('\r\n','\n'),canonical);
+});
