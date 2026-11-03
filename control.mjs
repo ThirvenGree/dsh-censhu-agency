@@ -55,7 +55,14 @@ export function inspectAdapters(home,profile=path.join(home,'profiles/desktop'))
    const file=path.resolve(profile,'node_modules',name);
    const rel=path.relative(path.join(profile,'node_modules'),file);
    if(rel.startsWith('..')||path.isAbsolute(rel))return {name,ok:false};
-   try{return {name,ok:createHash('sha256').update(fs.readFileSync(file)).digest('hex')===hash};}
+   try{
+     const bytes=fs.readFileSync(file);
+     if(createHash('sha256').update(bytes).digest('hex')===hash)return {name,ok:true};
+     // Settings decorators may rewrite unrelated parts of either shared client on startup.
+     const clients={'dsh-bili-whale/lib/client.js':'v.nextThought || v.reflection || choices[v.intent]', 'dsh-douyin-browser-local/client.js':"note(v.nextThought||v.reflection||({yes:"};
+     const marker=clients[name.split(path.sep).join('/')];
+     return {name,ok:Boolean(marker&&bytes.toString('utf8').includes(marker)),fileChanged:true};
+   }
    catch{return {name,ok:false};}
  });
 }
