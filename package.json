@@ -1,6 +1,6 @@
 {
   "name": "dsh-censhu-agency",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "type": "module",
   "main": "host.js",
   "exports": {
@@ -38,6 +38,7 @@
     "adapter.mjs",
     "inner-agency.js",
     "control.mjs",
-    "control-install.mjs"
+    "control-install.mjs",
+    "timeline.js"
   ]
 }

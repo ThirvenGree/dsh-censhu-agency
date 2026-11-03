@@ -1,3 +1,4 @@
+import {displayId,pendingDisplay} from './timeline.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
@@ -11,12 +12,12 @@ export function ownsInner(core){
  const owner=data(core.dir,'owner',{});return owner.until>core.now()&&core.statusSnapshot?.sessionIds?.includes(owner.sessionId);
 }
 export function agencyDisplay(dir,sessionId){
- const state=data(dir,'state',{}), owner=data(dir,'owner',{});
+ const state=data(dir,'state',{}), control=data(dir,'control',{}),owner=control.sessionId?control:data(dir,'owner',{});
  if(!sessionId||owner.sessionId!==sessionId)return [];
- const outcomes=(state.history||[]).filter(r=>r.run&&(!r.sessionId||r.sessionId===sessionId)).map(r=>{
- const hash=createHash('sha256').update(JSON.stringify([r.at,r.run,r.type,r.detail])).digest('hex').slice(0,24);
- return {id:'process:agency:'+hash,at:r.at,reviewedAt:r.at,displayText:'**主动进行 · '+r.type+'**\n\n'+r.detail+'\n\n回合 '+r.run};
- });
+ const home=path.dirname(dir);
+ const records=[...(state.history||[]).filter(r=>r.sessionId===sessionId||(!r.sessionId&&r.run)),...pendingDisplay(home,sessionId)];
+ const unique=new Map(records.map(r=>[displayId(r),r]));
+ const outcomes=Array.from(unique,([id,r])=>({id,at:r.at,reviewedAt:r.at,displayText:'**主动进行 · '+r.type+'**\n\n'+r.detail+(r.run?'\n\n回合 '+r.run:'')}));
  const inner=fs.existsSync(path.join(dir,'state.json'))?JSON.parse(fs.readFileSync(path.join(dir,'state.json'),'utf8')):{};
  for(const r of inner.agencyRequests||[]){
    if(r.sourceId!==sessionId||!r.updatedAt)continue;
