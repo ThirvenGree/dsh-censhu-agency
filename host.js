@@ -367,7 +367,7 @@ export function apply(ctx){
      const turn=active,isCurrent=()=>turn&&active===turn&&turn.tracking&&!turn.ended&&enabled(turn.id)&&same(exec.agent?.session?.id||exec.agent?.id,executionId());
      if(!isCurrent())throw Error('仅限当前已接管的岑舒生活回合');
      if(args.action==='recall'){
-       const rows=await ctx.cenShuInnerLife.recallMethods(turn.id,args.goal);
+       const rows=await ctx.cenShuInnerLife.recallMethods(turn.id,args.goal,isCurrent);
        if(!isCurrent())throw Error('生活回合已结束');
        turn.methods=new Map(rows.map(r=>[r.id,r.version]));log('按目标回忆方法',args.goal+' · 找到 '+rows.length+' 条');
        return JSON.stringify(rows);
