@@ -59,7 +59,7 @@ export function message(op,notes,id){
  '记不起事件编号时可以先用 censhu_agency_find_event 搜索时间或线索，也可以改用近义词；查无记录不等于没发生。需要弄清先后或核对前情时，可用 censhu_agency_event_history 按事件编号回看原始阶段，自行决定看到哪里。可以根据发生时间忽略过时或无关的事。每日生活建议尚未采纳，可按编号 adopt 或 dismiss，也可以留待以后；需要整理性格或生活积累时自行发起。可同时安排下次考虑时间和变化合并窗口。',
  '你负责综合判断 Gemini 摘要和原始线索。根据工具回执可以修正决定。若愿意改变生活里的具体打算或决定下次何时再考虑，可调用 censhu_agency_arrange；新事件和自己的明确提醒仍可提前到来。',
  '已有记忆和自己的独处观察由你衡量。若想记下当前感受，可用 censhu_agency_diary 提交你写的内容；此前已提交或仅状态更新的日记不重复执行。',
- '想稍后做的事用 censhu_agency_note 记下线索、做到哪一步和可选提醒时间；可把笔记绑到正在发生的 eventId 和 event-stage 或 event-end，并记录切走前做到哪一步。愿意让生活、独处及浏览规划参考时，可用 shareMinutes 指定有效期，私人的线索省略；已完成或改变心意时按编号撤下。无需给每个想法建待办。',
+ '想稍后做的事用 censhu_agency_note 记下线索、做到哪一步和可选提醒时间；可把笔记绑到正在发生的 eventId 和 event-stage 或 event-end，并记录切走前做到哪一步。愿意让生活、独处及浏览规划参考时，可用 shareMinutes 指定有效期，私人的线索省略；已完成或改变心意时按编号撤下。可写why、triggerCue、cancelWhen和sourceRefs，notBefore/expiresAt用毫秒时间戳。线索命中或到期仅提示重新考虑，自己决定继续、修改、推迟或放下；编辑或撤回时先读当前 revision。无需给每个想法建待办。',
  JSON.stringify({处境:op.context,刚发生:op.changes,自己留的线索:notes})
  ].join('\n')}]};
 }

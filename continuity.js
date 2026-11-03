@@ -1,6 +1,7 @@
+import {validAt} from './prospective.js';
 export function matchingNotes(notes,changes,now){
  return notes.filter(n=>{
-   if(n.deliveredAt)return false;
+   if(n.deliveredAt||!validAt(n,now))return false;
    if(n.due&&n.due<=now)return true;
    return n.eventId&&changes.some(c=>c.id===n.eventId&&c.kind===n.when);
  });

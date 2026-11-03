@@ -34,6 +34,7 @@
     "cordis.patch.yml",
     "README.md",
     "continuity.js",
+    "prospective.js",
     "control.mjs",
     "control-install.mjs",
     "timeline.js",
