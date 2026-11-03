@@ -1,3 +1,4 @@
+import {agencyRequestHistory} from './request-history.js';
 import {verifySent} from './verify-sent.js';
 import {validAt,unchangedNotes,updateNote} from './prospective.js';
 import {createRequestGuard} from './request-guard.js';
@@ -240,7 +241,17 @@ export function apply(ctx){
      if(Object.keys(full).length){active.contextPages=full;op.context.可按需展开={工具:'censhu_agency_context_page',条目总数:available};}
      const packet=message(op,notes,run);
      const offContext=agent.ctx.on('system-prompt/assemble',async(_a,_c,next)=>{const assembled=await next();return {...assembled,sections:[...(assembled.sections||[]),{name:'censhu-agency-current',text:packet.content[0].text}]};});
-     active.offModel=()=>{offContext();offModel();};state.rounds={day,count:(state.rounds?.day===day?state.rounds.count:0)+1};p.phase='dispatching';commit();
+     const displayIds=new Set((agent.session.snapshotEvents?.()||[]).filter(e=>e.type==='user/message'&&
+       e.data?.source?.kind==='censhu-inner-life'&&(e.data.source.displayEntryId||e.data.source.executionRequestId)).map(e=>e.data.id));
+     const offHistory=ctx.on('llm/stream',(options,next)=>{
+       if(same(options.sessionId,executionId())&&Array.isArray(options.messages)&&options.messages.some(m=>m.id===run)){
+         const previous=options.messages;
+         options.messages=agencyRequestHistory(previous,displayIds);
+         if(previous!==options.messages){state.lastHistoryProjection={at:Date.now(),run,before:previous.length,after:options.messages.length};commit();}
+       }
+       return next();
+     },{prepend:true});
+     active.offModel=()=>{offHistory();offContext();offModel();};state.rounds={day,count:(state.rounds?.day===day?state.rounds.count:0)+1};p.phase='dispatching';commit();
      try{await agent.followup({...packet,content:[{type:'text',text:'【内部主动机会】请结合本轮处境自行选择。'}]});}
      catch(error){
        const events=agent.session?.snapshotEvents?.();

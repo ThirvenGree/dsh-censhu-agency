@@ -36,6 +36,7 @@
     "continuity.js",
     "prospective.js",
     "verify-sent.js",
+    "request-history.js",
     "control.mjs",
     "control-install.mjs",
     "timeline.js",
