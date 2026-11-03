@@ -200,13 +200,13 @@ export function apply(ctx){
  }));
  ctx.effect(()=>ctx.tools.register({
    name:'censhu_agency_activity',description:'在主动回合中决定正在做什么、心里挂着什么，或开始、推进、结束生活事件。浏览本机网页、看视频或联系他人时用实际工具，活动描述不会替代工具执行。',
-   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['set','start','advance','end','pet','interests','thoughts','inner-state','growth','personality','douyin-reply']},activity:{type:'string'},thought:{type:'string'},minutes:{type:'integer'},id:{type:'string'},stage:{type:'integer'}}},
+   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['set','start','advance','end','pet','interests','thoughts','inner-state','growth','personality','douyin-reply']},activity:{type:'string'},thought:{type:'string'},energy:{type:'string',enum:['tired','rested','uncertain']},minutes:{type:'integer',minimum:1,maximum:1440},id:{type:'string'},stage:{type:'integer'}}},
    output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
    async execute(a,exec){
      if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供绑定角色的主动回合');
      if(a.action==='set'){
        if(typeof a.activity!=='string'||!a.activity.trim()||a.activity.length>240||String(a.thought||'').length>500)throw Error('请简要写下当前活动和念头');
-       const now=Date.now(),value={sessionId:active.id,run:active.run,at:now,until:nextWindow(a.minutes??60,now),activity:a.activity,thought:a.thought||''};
+       const now=Date.now(),value={sessionId:active.id,run:active.run,at:now,until:nextWindow(a.minutes,now),activity:a.activity,energy:a.energy,thought:a.thought||''};
        save(path.join(home,'censhu-agency/current.json'),value);log('自主活动',describeActivity(value));return JSON.stringify(value);
      }
      if(a.action==='douyin-reply'){const order=replyOrder(a.id,a.thought,active.id);log('选择答复抖音消息','已将选定正文交给发送端，等候平台回执。');return JSON.stringify(order);}

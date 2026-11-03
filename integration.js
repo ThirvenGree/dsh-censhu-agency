@@ -14,6 +14,6 @@ export function revise(service,sessionId,run,a){
  return result;
 }
 export function nextWindow(minutes,now){
- if(!Number.isInteger(minutes)||minutes<5||minutes>1440)throw Error('可在5至1440分钟后重新考虑');
+ if(!Number.isInteger(minutes)||minutes<1||minutes>1440)throw Error('可在1至1440分钟后重新考虑');
  return now+minutes*60000;
 }

@@ -103,6 +103,7 @@ export function installControl(profile){
  patch('dsh-bili-whale','tools/commands/whale-night.mjs',"if (cmd === 'plan') {","if (agencyOwner()&&['plan','clock','mark'].includes(cmd)&&!args.includes('--test')){console.log('WHALE_DONE · 观看机会由主动进行判断');} else if (cmd === 'plan') {");
  patch('dsh-censhu-inner-life','lib/inner-state.js',' async tick(force=false){',' async tick(force=false){\n   if(agencyOwner(this.c.sourceId())&&!force)return;');
  patch('dsh-censhu-inner-life','lib/host.js',"if(part==='growth'){await core.personalGrowth.tick(true);","if(part==='inner-state'){await core.innerState.tick(true);return core.innerState.view();}if(part==='growth'){await core.personalGrowth.tick(true);");
+ patch('dsh-cen-shu-life','lib/engine.js',"fatigue:(c.minute>=60&&c.minute<420)||this.state.active.some(e=>e.effect==='fatigue')","fatigue:agencyOwner(this.config.sessionIds[0])?(self?.energy==='tired'||(!['tired','rested'].includes(self?.energy)&&this.state.active.some(e=>e.effect==='fatigue'))):((c.minute>=60&&c.minute<420)||this.state.active.some(e=>e.effect==='fatigue'))");
  for(const r of plans){
    const imp="import {owner as agencyOwner,signal as agencySignal,current as agencyCurrent} from './censhu-control.mjs';";
    if(!r.src.includes(imp))r.src=imp+'\n'+r.src;
