@@ -58,3 +58,18 @@ test('生活候选不进入选题，必须主动采纳；放下与重复提交�
  send('adopt','0');assert.equal(send('adopt','0').replayed,true);send('dismiss','1');assert.equal(send('list').length,0);
  assert.deepEqual(life.status().intentions.map(x=>x.text),['茶']);assert.throws(()=>send('dismiss','0'));
 }));
+
+test('同一凌晨可自述清醒或疲惫；没有判断时只参考正在发生的疲劳事件',{skip:!process.env.AGENCY_PROFILE},profile(async(home,dir)=>{
+ const file=path.join(process.env.AGENCY_PROFILE,'node_modules/dsh-cen-shu-life/lib/engine.js');
+ const {LifeEngine}=await import(pathToFileURL(file));
+ const engine={home,config:{sessionIds:['role'],timezone:'Asia/Shanghai'},state:{active:[]}};
+ const now=Date.parse('2026-11-03T03:00:00+08:00');
+ const fatigue=()=>LifeEngine.prototype.life.call(engine,now).fatigue;
+ assert.equal(fatigue(),false);
+ engine.state.active.push({effect:'fatigue'});
+ assert.equal(fatigue(),true);
+ for(const [energy,expected] of [['rested',false],['tired',true],['uncertain',true]]){
+   fs.writeFileSync(path.join(dir,'current.json'),JSON.stringify({sessionId:'role',until:Date.now()+60000,energy}));
+   assert.equal(fatigue(),expected);
+ }
+}));
