@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {receiveDiary,tickWithAgency,agencyDisplay} from './inner-agency.js';
+const {receiveDiary,tickWithAgency,agencyDisplay}=await import(pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT||'../dsh-censhu-inner-life','lib/inner-agency.js')));
 test('主动决定 → 独处审核 → 原有记忆渠道；重复请求不再执行', {skip:!process.env.INNER_PLUGIN_ROOT},async()=>{
  const {InnerLife}=await import(pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT,'lib/core.js')));
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'agency-inner-')),dir=path.join(home,'censhu-inner-life');

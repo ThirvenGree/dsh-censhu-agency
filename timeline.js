@@ -45,3 +45,33 @@ export function acknowledgeSeenAgency(home,seen){
    if(/^[a-f0-9]{24}\.json$/.test(file)&&seen.has('process:agency:'+file.slice(0,-5)))fs.rmSync(path.join(dir,file),{force:true});
  }
 }
+
+function brief(value){
+ return String(value).replace(/(?:sk-[\w-]{10,}|AIza[\w-]{12,}|gh[pous]_[\w-]+|Bearer\s+[\w.=-]+)/gi,'[已隐藏]').replace(/([?&](?:token|key|signature|auth|code)=)[^&#\s]*/gi,'$1[已隐藏]').slice(0,180);
+}
+export function describeCall(name,raw){
+ let args=raw;try{if(typeof raw==='string')args=JSON.parse(raw);}catch{return name;}
+ if(!args||typeof args!=='object')return name;
+ const fields={action:'动作',query:'查找',eventId:'事件',activity:'活动',minutes:'分钟',title:'标题',url:'页面',selector:'元素',file_path:'文件',videoId:'视频',bv:'视频',stage:'阶段'};
+ const info=[];
+ for(const [key,label] of Object.entries(fields)){
+   const v=args[key];if(typeof v!=='string'&&typeof v!=='number')continue;
+   if(key==='url'){try{const u=new URL(v);if(['http:','https:'].includes(u.protocol))info.push(label+' '+u.origin+brief(u.pathname));}catch{}}
+   else info.push(label+' '+brief(v));
+ }
+ return [name,...info].join(' · ');
+}
+export function describeResult(name,message){
+ const blocks=Array.isArray(message.content)?message.content:[];
+ const summary=[];for(const block of blocks){
+   if(block.type==='image'){summary.push('返回图片');continue;}
+   if(block.type!=='text')continue;
+   let v;try{v=JSON.parse(block.text);}catch{continue;}
+   if(!v||typeof v!=='object')continue;
+   for(const [k,label] of Object.entries({total:'匹配',count:'数量',status:'状态',confirmed:'平台确认',eventId:'事件',olderBefore:'更早页游标'})){
+     if(['boolean','number','string'].includes(typeof v[k]))summary.push(label+' '+brief(v[k]));
+   }
+   for(const [k,label] of [['rows','阶段'],['candidates','候选'],['items','条目']])if(Array.isArray(v[k]))summary.push(v[k].length+' 条'+label);
+ }
+ return [name,...new Set(summary)].join(' · ');
+}

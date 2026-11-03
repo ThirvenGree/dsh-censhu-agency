@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {queueDisplay,pendingDisplay,acknowledgeDisplay,watchDisplay,displayId,describeActivity,describePlan} from './timeline.js';
-import {agencyDisplay} from './inner-agency.js';
+import {pathToFileURL} from 'node:url';
+const {agencyDisplay}=await import(pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT||'../dsh-censhu-inner-life','lib/inner-agency.js')));
 test('真实变化唤醒展示，未投递内容跨重启保存，回放按会话和记录编号去重',async()=>{
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'agency-display-')),dir=path.join(home,'censhu-inner-life'),base=path.join(home,'censhu-agency');let close,timer;
  try{

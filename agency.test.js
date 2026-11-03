@@ -45,7 +45,7 @@ test('桥接统一发送携带逐条 OneBot 回执，缺少一条即不报告整
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {agencyPlans} from './agency-plans.js';
+const {agencyPlans}=await import((await import('node:url')).pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT||'../dsh-censhu-inner-life','lib/agency-plans.js')));
 test('共享规划只取本会话主动选择公开给规划且仍有效的打算',()=>{
  const home=mkdtempSync(path.join(os.tmpdir(),'agency-share-'));
  try{

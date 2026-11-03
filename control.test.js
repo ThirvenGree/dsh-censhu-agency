@@ -10,7 +10,8 @@ import {commitDelivery} from './continuity.js';
 function profile(fn){return async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'agency-control-')),old=process.env.DSH_HOME;
  process.env.DSH_HOME=temp;const dir=path.join(temp,'censhu-agency');fs.mkdirSync(dir);
- fs.writeFileSync(path.join(dir,'control.json'),JSON.stringify({version:1,sessionId:'role'}));
+ fs.writeFileSync(path.join(dir,'control.json'),JSON.stringify({version:2,sessionId:'role'}));
+ fs.writeFileSync(path.join(dir,'owner.json'),JSON.stringify({sessionId:'role',until:Date.now()+60000}));
  try{await fn(temp,dir);}finally{if(old===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=old;fs.rmSync(temp,{recursive:true,force:true});}
 };}
 test('跨进程的通知在主会话接收之前保留；只有绑定角色可决定私信文字且只能领取一次',profile((h,dir)=>{
@@ -84,4 +85,22 @@ test('delivery persists the original opportunity; only an undecided failed turn 
   assert.equal(c.phase,expected);assert.equal(c.notes[0].id,'note');assert.equal(c.thread,'one');
   if(expected==='retry')assert.ok(c.retryAt>2000);
  }
+});
+
+test('shared contact reservation observes other sources, rest time and duplicate handoffs',async()=>{
+ const {reserveContact,dayOf}=await import('./safety.js');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'agency-contact-')),dir=path.join(root,'characters/censhu');
+ try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'integration.json'),JSON.stringify({sessionId:'role'}));
+ const now=Date.parse('2026-11-03T11:00:00+08:00');
+ fs.writeFileSync(path.join(dir,'initiative.json'),JSON.stringify({at:now-1000,source:'bridge'}));
+ assert.throws(()=>reserveContact(root,'role','r1',now),/冷却/);
+ reserveContact(root,'role','r1',now+3600000);assert.throws(()=>reserveContact(root,'role','r1',now+7200000));
+ assert.throws(()=>reserveContact(root,'role','r2',Date.parse('2026-11-04T04:30:00+08:00')));
+ assert.equal(dayOf(Date.parse('2026-11-03T16:03:00Z')),'2026-11-04');
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('state request blocks rebinding and cross-site access',async()=>{
+ const {createRequestGuard}=await import('./request-guard.js'),g=createRequestGuard();
+ for(const headers of [{host:'evil.example:3388'},{host:'localhost:3388',origin:'https://evil.example'},{host:'localhost:3388','sec-fetch-site':'cross-site'}])assert.throws(()=>g.check({headers,method:'GET',socket:{localPort:3388}},'/state'));
+ g.check({headers:{host:'127.0.0.1:3388'},method:'GET',socket:{localPort:3388}},'/state');
 });

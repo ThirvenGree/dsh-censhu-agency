@@ -4,7 +4,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 const base=()=>path.join(process.env.DSH_HOME||path.join(os.homedir(),'.dsh'),'censhu-agency');
 export function owner(session){
- try{const r=JSON.parse(fs.readFileSync(path.join(base(),'control.json'),'utf8'));return r.version===1&&!!r.sessionId&&(!session||session===r.sessionId);}
+ try{const r=JSON.parse(fs.readFileSync(path.join(base(),'control.json'),'utf8'));const lease=JSON.parse(fs.readFileSync(path.join(base(),'owner.json'),'utf8'));return r.version===2&&r.disabled!==true&&lease.until>Date.now()&&lease.sessionId===r.sessionId&&!!r.sessionId&&(!session||session===r.sessionId);}
  catch(e){if(e.code==='ENOENT')return false;throw e;}
 }
 export function signal(source,key,detail){
@@ -24,7 +24,7 @@ export function observations(home,sessionId,seen=[],now=Date.now()){
  for(const file of fs.readdirSync(dir).filter(x=>/^[a-f0-9]{64}\.json$/.test(x))){
    const full=path.join(dir,file),r=JSON.parse(fs.readFileSync(full,'utf8'));
    if(now-r.at>86400000){for(const ext of ['.reply','.reply.claimed','.json'])fs.rmSync(path.join(dir,r.id+ext),{force:true});continue;}
-   if(r.sessionId===sessionId&&!seen.includes(r.id))rows.push(r);
+   if(r.sessionId===sessionId&&!seen.includes(r.id))rows.push(r.source==='B站通知'?{...r,detail:'B站有外部通知，正文保留在原渠道。'}:r);
  }
  return rows.sort((a,b)=>a.at-b.at).slice(0,20);
 }

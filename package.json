@@ -1,6 +1,6 @@
 {
   "name": "dsh-censhu-agency",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "main": "host.js",
   "exports": {
@@ -34,13 +34,12 @@
     "cordis.patch.yml",
     "README.md",
     "continuity.js",
-    "agency-plans.js",
-    "adapter.mjs",
-    "inner-agency.js",
     "control.mjs",
     "control-install.mjs",
     "timeline.js",
-    "plan-choice.js",
-    "scope-audit.mjs"
+    "scope-audit.mjs",
+    "safety.js",
+    "request-guard.js",
+    "uninstall.mjs"
   ]
 }
