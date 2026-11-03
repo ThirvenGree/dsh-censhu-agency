@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({id:'dsh-censhu-agency',factory(require){
      h('article',null,h('h3',null,'动态节奏与插件联动'),
      h('p',null,data?.rhythm?data.rhythm.source+' · 合并变化 '+data.rhythm.mergeSeconds+' 秒 · 下次自然空当 '+when(data.rhythm.nextNaturalAt):'等待读取节奏'),
      ...[['受到的影响',data?.links?.incoming,'fromLabel'],['正在影响',data?.links?.outgoing,'toLabel']].map(([title,rows,key])=>h('details',{key:title},h('summary',null,title+' · '+(rows?.length??'待核实')), ...(rows||[]).map((x,i)=>h('p',{key:i},x[key]+' · '+x.status+' · '+x.detail)))),
-     data?.pending?h('p',null,'正在核对投递 · '+data.pending.phase):null,h('p',null,'生活事件、观看感受、独处兴趣和心情进入处境。岑舒可以调整生活意向，或使用主会话的工具。'),h('small',null,'最近读取生活接口 · '+when(data?.inputAt))),
+     data?.pending?h('p',null,'正在核对投递 · '+data.pending.phase):null,h('p',null,'生活事件、观看感受、独处兴趣和心情进入处境。岑舒可以调整生活意向，或使用主会话的工具。'),h('small',null,'最近读取生活接口 · '+when(data?.inputAt)+'　记忆 · '+(data?.memoryRead?data.memoryRead.count+' 条（'+when(data.memoryRead.at)+'）':'等待实际读取'))),
      h('article',{className:'section'},h('h3',null,'还挂念的事'),...(data?.notes?.length?data.notes.map(n=>h('p',{key:n.id},n.text,n.eventId?' · '+n.eventId+' / '+(n.when==='event-end'?'结束':'阶段推进'):'',n.resume?' · 接下来：'+n.resume:'',n.deliveredAt?' · 已交还 '+when(n.deliveredAt):'',n.due?' · '+when(n.due):'')):[h('p',{key:'empty'},'目前没有留待稍后处理的事。')])),
      h('article',{className:'section'},h('h3',null,'行动记录'),...(data?.history||[]).map((x,i)=>h('details',{key:[x.at,x.run,x.type,i].join('-'),className:/报错|异常|未取得/.test(x.type)?'error':''},h('summary',null,h('time',null,when(x.at)),'　',x.type),h('p',{className:'detail'},x.detail))),h('small',null,'页面可见时自动更新 · '+when(data?.at))));
  }

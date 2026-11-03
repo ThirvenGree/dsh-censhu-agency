@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {read,save,situation,opportunity,message} from './core.js';
 export const name='censhu-agency';
-export const inject=['agents','sessionController','workspaceRegistry','tools','webServer','cenShuLifeShared'];
+export const inject=['agents','sessionController','workspaceRegistry','tools','webServer','cenShuLifeShared','cenShuInnerLife'];
 const same=(a,b)=>!!a&&!!b&&String(a).replace(/^session-/,'')===String(b).replace(/^session-/,'');
 export function apply(ctx){
  const home=process.env.DSH_HOME||path.join(os.homedir(),'.dsh');
@@ -23,7 +23,7 @@ export function apply(ctx){
    if(state.lastWait!==label){state.lastWait=label;log('机会等待',label);}
  }
  const bound=()=>read(path.join(home,'characters/censhu/integration.json'),{}).sessionId;
- function log(type,detail,run=active?.run){state.history.push({at:Date.now(),run,type,detail:String(detail||'').slice(0,600)});state.history=state.history.slice(-150);commit();}
+ function log(type,detail,run=active?.run){state.history.push({at:Date.now(),run,sessionId:active?.id||bound(),type,detail:String(detail||'').slice(0,600)});state.history=state.history.slice(-150);commit();}
  function selectedModel(){
    const id=bound();
    if(!/^session-[a-z0-9-]+$/i.test(id||''))return null;
@@ -94,6 +94,13 @@ export function apply(ctx){
      state.inputAt=Date.now();
      try{await summarize(op,id);}catch(e){state.geminiRetryAt=Date.now()+([401,402,403].includes(e.httpStatus)?3600000:180000);log('处境摘要未取得，使用原始记录',e.message);}
      if(stopped||agent.status!=='idle'||!enabled(id))return;
+     // Keep memory and private diary excerpts inside the character's own DSH turn.
+     try{
+       const recalled=ctx.cenShuLifeShared.snapshot({sessionId:id,purpose:'agency'}).memories||[];
+       op.context.已有记忆=recalled.slice(0,12).map(m=>({来源:m.source,内容:String(m.text).slice(0,450)}));
+       state.memoryRead={at:now,count:op.context.已有记忆.length};
+     }catch(e){log('记忆读取暂不可用',e.message);}
+     op.context.私人独处背景=snap.privateContext;
      const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
      const notes=[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
      const p={run,sessionId:id,phase:'prepared',beforeSeq:agent.session?.snapshotEvents?.()?.at(-1)?.seq,cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
@@ -146,6 +153,16 @@ export function apply(ctx){
      return JSON.stringify(receipt);
    }
  }));
+ ctx.effect(()=>ctx.tools.register({
+   name:'censhu_agency_diary',description:'自己决定写下独处日记时，提交自己已经形成的感受。关联的本批生活事件可供既有记忆和心情审核。回执显示排队或审核状态。',
+   parameters:{type:'object',required:['reflection'],properties:{reflection:{type:'string',maxLength:1000},eventIds:{type:'array',maxItems:8,items:{type:'string'}}}},
+   output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
+   execute(a,exec){
+     if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供当前角色主动回合');
+     const receipt=ctx.cenShuInnerLife.receiveAgencyDiary({sessionId:active.id,run:active.run,reflection:a.reflection,eventIds:a.eventIds,actions:state.history.filter(x=>x.run===active.run&&['工具返回','工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(x.type)).slice(-12).map(({at,type,detail})=>({at,type,detail}))});
+     log('独处日记提交',receipt.id+' · '+receipt.status);return JSON.stringify(receipt);
+   }
+ }));
  ctx.effect(()=>ctx.tools.register({name:'censhu_agency_note',description:'保留自己的未竟事项及恢复线索，或移除已完成和改变主意的事项。',parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['keep','remove','read','private','uncertain']},id:{type:'string'},text:{type:'string'},minutes:{type:'number'},eventId:{type:'string'},when:{type:'string',enum:['event-stage','event-end']},resume:{type:'string'},shareMinutes:{type:'integer',minimum:1,maximum:1440}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
    if(!same(exec.agent?.session?.id||exec.agent?.id,bound()))throw Error('仅供绑定角色会话使用');
    if(['private','uncertain'].includes(a.action)){log(a.action==='private'?'选择留给自己':'暂时拿不准',String(a.text||'').slice(0,200));return '已记录';}
@@ -155,7 +172,7 @@ export function apply(ctx){
    if(a.action==='remove'){state.notes=state.notes.filter(n=>n.id!==a.id);log('放下或完成打算',a.id);}
    return JSON.stringify(state.notes);
  }}));
- ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,rhythm,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,mainModel:selectedModel()||state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,rhythm,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,mainModel:selectedModel()||state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
  const timer=setInterval(()=>{if(busy&&active&&enabled(active.id))save(lease,{sessionId:active.id,until:Date.now()+90000});void tick();},20000);timer.unref?.();void tick();
  ctx.effect(()=>()=>{stopped=true;clearInterval(timer);save(lease,{until:0});});
 }
