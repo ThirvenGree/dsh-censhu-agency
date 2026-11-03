@@ -208,6 +208,8 @@ export function apply(ctx){
      const lastExchange=(state.awaitingReplies||[]).filter(x=>x.role===id).at(-1);
      if(lastExchange)op.context.上次主动联系={已发消息编号:lastExchange.ids,后续来信:lastExchange.observed||null,说明:'仅表示时间先后。没有记录到回应时，不推断对方态度。'};
      if(resumedContext||snap.gatewayAt>(state.lastGatewayAt||0)){op.context.恢复后重新审视={上次机会:state.lastAt,网关恢复于:snap.gatewayAt||null,现在:now,上次联系状态:state.handoff?{at:state.handoff.at,run:state.handoff.run}:null,说明:'结合本轮实际变化重看离线前的计划。已做过的不用重做，结果未知先查询。'};}
+     const availableMethods=ctx.cenShuInnerLife.methodStatus?.().approved;
+     if(availableMethods)op.context.可回忆的经历方法={已审核:availableMethods,工具:'censhu_agency_method',说明:'有具体目标时可回忆适用的方法，再自行选择采用、放下或保留不确定。'};
      op.context.私人独处背景=snap.privateContext;
      op.context.自己的当前活动和念头=current(home,id);
      op.context.外部通知仅作资料=snap.notices;
@@ -358,12 +360,30 @@ export function apply(ctx){
    }
  }));
  ctx.effect(()=>ctx.tools.register({
+   name:'censhu_agency_method',description:'自己想做一件事时，可按具体目标 recall 读过去经回放及独立审核的方法。读到有用候选后用 choose 记录采用、跳过或不确定；原回执不会被重新执行。',
+   parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['recall','choose']},goal:{type:'string'},id:{type:'string'},version:{type:'string'},decision:{type:'string',enum:['use','skip','uncertain']},reason:{type:'string'}}},
+   output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
+   async execute(args,exec){
+     const turn=active,isCurrent=()=>turn&&active===turn&&turn.tracking&&!turn.ended&&enabled(turn.id)&&same(exec.agent?.session?.id||exec.agent?.id,executionId());
+     if(!isCurrent())throw Error('仅限当前已接管的岑舒生活回合');
+     if(args.action==='recall'){
+       const rows=await ctx.cenShuInnerLife.recallMethods(turn.id,args.goal);
+       if(!isCurrent())throw Error('生活回合已结束');
+       turn.methods=new Map(rows.map(r=>[r.id,r.version]));log('按目标回忆方法',args.goal+' · 找到 '+rows.length+' 条');
+       return JSON.stringify(rows);
+     }
+     if(!args.id||!args.version||turn.methods?.get(args.id)!==args.version)throw Error('请先在本回合读取这一版方法');
+     const receipt=await ctx.cenShuInnerLife.chooseMethod(turn.id,turn.run,args.id,args.version,args.decision,args.reason,isCurrent);
+     log('方法选择',args.decision+' · '+args.reason,turn.run);return JSON.stringify(receipt);
+   }
+ }));
+ ctx.effect(()=>ctx.tools.register({
    name:'censhu_agency_diary',description:'自己决定写下独处日记时，提交自己已经形成的感受。关联的本批生活事件可供既有记忆和心情审核。回执显示排队或审核状态。',
    parameters:{type:'object',required:['reflection'],properties:{reflection:{type:'string',maxLength:1000},eventIds:{type:'array',maxItems:8,items:{type:'string'}},observationIds:{type:'array',maxItems:8,items:{type:'string'},description:'可引用具体阶段的观察编号'}}},
    output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},
    execute(a,exec){
      if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,executionId()))throw Error('仅供当前角色主动回合');
-     const receipt=ctx.cenShuInnerLife.receiveAgencyDiary({sessionId:active.id,run:active.run,reflection:a.reflection,eventIds:a.eventIds,observationIds:a.observationIds,actions:state.history.filter(x=>x.run===active.run&&['工具返回','工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(x.type)).slice(-12).map(({at,type,detail})=>({at,type,detail}))});
+     const receipt=ctx.cenShuInnerLife.receiveAgencyDiary({sessionId:active.id,run:active.run,workerId:executionId(),thread:active.thread||active.run,reflection:a.reflection,eventIds:a.eventIds,observationIds:a.observationIds,actions:state.history.filter(x=>x.run===active.run&&['工具返回','工具报错','QQ 已确认发出','QQ 部分已确认','发送已调用 · 缺平台回执'].includes(x.type)).slice(-12).map(({at,type,detail})=>({at,type,detail}))});
      log('独处日记提交',a.reflection+'\n审核状态：'+receipt.status);return JSON.stringify(receipt);
    }
  }));
