@@ -15,7 +15,9 @@ window.__ModuleLoader__.load({id:'dsh-censhu-agency',factory(require){
      let live=true,busy=false;
      async function load(){if(document.hidden||busy)return;busy=true;try{
        const r=await fetch('/censhu-agency/state',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
-       const d=await r.json();if(live){set(d);fail('');}
+       const d=await r.json();
+       try{const links=await fetch('/dsh-plugin-links/state',{cache:'no-store'});if(links.ok)d.links=(await links.json()).rows?.find(x=>x.id==='dsh-censhu-agency');}catch{}
+       if(live){set(d);fail('');}
      }catch(e){if(live)fail(String(e));}finally{busy=false;}}
      refresh.current=load;load();const timer=setInterval(load,8000);
      document.addEventListener('visibilitychange',load);window.addEventListener('focus',load);
@@ -25,8 +27,11 @@ window.__ModuleLoader__.load({id:'dsh-censhu-agency',factory(require){
    return h('section',{className:'csa'},h('style',null,css),
      h('header',null,h('div',null,h('small',null,'岑舒 · 自主行动'),h('h2',null,'主动进行'),h('p',{'aria-live':'polite'},error||data?.status||'正在读取…')),h('button',{type:'button',onClick:()=>refresh.current?.()},'刷新状态')),
      h('div',{className:'grid'},card('处境整理','Gemini',data?.geminiRetryAt>Date.now()?'暂缓重试至 '+when(data.geminiRetryAt):'最近成功 · '+when(data?.geminiAt)),card('选择与行动',data?.mainModel||'等待模型记录','由绑定会话判断、调用工具并调整打算'),card('下次自然空当',data?.nextConsiderAt?when(data.nextConsiderAt):'跟随生活节奏','生活变化或自己的提醒可以提前唤起')),
-     h('article',null,h('h3',null,'处境与联动'),h('p',null,'生活事件、观看感受、独处兴趣和心情进入处境。岑舒可以调整生活意向，或使用主会话的工具。'),h('small',null,'最近读取生活接口 · '+when(data?.inputAt))),
-     h('article',{className:'section'},h('h3',null,'还挂念的事'),...(data?.notes?.length?data.notes.map(n=>h('p',{key:n.id},n.text,n.due?' · '+when(n.due):'')):[h('p',{key:'empty'},'目前没有留待稍后处理的事。')])),
+     h('article',null,h('h3',null,'动态节奏与插件联动'),
+     h('p',null,data?.rhythm?data.rhythm.source+' · 合并变化 '+data.rhythm.mergeSeconds+' 秒 · 下次自然空当 '+when(data.rhythm.nextNaturalAt):'等待读取节奏'),
+     ...[['受到的影响',data?.links?.incoming,'fromLabel'],['正在影响',data?.links?.outgoing,'toLabel']].map(([title,rows,key])=>h('details',{key:title},h('summary',null,title+' · '+(rows?.length??'待核实')), ...(rows||[]).map((x,i)=>h('p',{key:i},x[key]+' · '+x.status+' · '+x.detail)))),
+     data?.pending?h('p',null,'正在核对投递 · '+data.pending.phase):null,h('p',null,'生活事件、观看感受、独处兴趣和心情进入处境。岑舒可以调整生活意向，或使用主会话的工具。'),h('small',null,'最近读取生活接口 · '+when(data?.inputAt))),
+     h('article',{className:'section'},h('h3',null,'还挂念的事'),...(data?.notes?.length?data.notes.map(n=>h('p',{key:n.id},n.text,n.eventId?' · '+n.eventId+' / '+(n.when==='event-end'?'结束':'阶段推进'):'',n.resume?' · 接下来：'+n.resume:'',n.deliveredAt?' · 已交还 '+when(n.deliveredAt):'',n.due?' · '+when(n.due):'')):[h('p',{key:'empty'},'目前没有留待稍后处理的事。')])),
      h('article',{className:'section'},h('h3',null,'行动记录'),...(data?.history||[]).map((x,i)=>h('details',{key:[x.at,x.run,x.type,i].join('-'),className:/报错|异常|未取得/.test(x.type)?'error':''},h('summary',null,h('time',null,when(x.at)),'　',x.type),h('p',{className:'detail'},x.detail))),h('small',null,'页面可见时自动更新 · '+when(data?.at))));
  }
  return {inject:['slots'],apply(ctx){const s=ctx.get('slots');s.inject('settings.section',()=>s.register({name:'settings.section',id:'censhu-agency',order:55,label:()=>'主动进行'},Page));}};

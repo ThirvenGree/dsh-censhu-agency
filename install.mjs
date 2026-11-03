@@ -1,3 +1,4 @@
+import {installPlanningAdapter} from './adapter.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),name='dsh-censhu-agency';
 const profile=path.join(process.env.DSH_HOME||path.join(os.homedir(),'.dsh'),'profiles/desktop');
 const file=path.join(profile,'package.json'),pkg=JSON.parse(fs.readFileSync(file));
+console.log(installPlanningAdapter(profile));
 const link=path.join(profile,'node_modules',name);
 if(fs.existsSync(link)&&fs.realpathSync(link)!==fs.realpathSync(root))throw Error('已有其他安装来源');
 if(!fs.existsSync(link))fs.symlinkSync(root,link,'junction');

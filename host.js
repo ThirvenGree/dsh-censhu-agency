@@ -1,3 +1,4 @@
+import {commitDelivery,snapshotHas,timing,sendReceipt} from './continuity.js';
 import {lifeInputs,revise,nextWindow} from './integration.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -13,9 +14,14 @@ export function apply(ctx){
  const file=path.join(home,'censhu-agency/state.json'),lease=path.join(home,'censhu-agency/owner.json');
  const state=read(file,{version:1,lastAt:Date.now(),cursor:0,notes:[],history:[]});
  if(state.version!==1||!Array.isArray(state.notes)||!Array.isArray(state.history))throw Error('主动进行状态文件版本不兼容');
+ let rhythm=null;
  let busy=false,stopped=false,status='等待连接',active=null,retryAt=0;
  delete state.checkedLastRun;
  const commit=()=>save(file,state);
+ function waiting(label){
+   status=label;
+   if(state.lastWait!==label){state.lastWait=label;log('机会等待',label);}
+ }
  const bound=()=>read(path.join(home,'characters/censhu/integration.json'),{}).sessionId;
  function log(type,detail,run=active?.run){state.history.push({at:Date.now(),run,type,detail:String(detail||'').slice(0,600)});state.history=state.history.slice(-150);commit();}
  function selectedModel(){
@@ -48,11 +54,24 @@ export function apply(ctx){
      const id=bound(), now=Date.now(), on=enabled(id);
      if(!on){save(lease,{until:0});status='主动总开关关闭、试运行或未绑定';return;}
      const snap=situation(home,now);
+     rhythm=timing(snap.pace,state,now);
      if(state.generation!==snap.feed.generation){state.generation=snap.feed.generation;state.cursor=snap.feed.sequence;commit();}
      save(lease,{sessionId:id,until:now+90000});
      const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',hourCycle:'h23'}).format(now));
-     if(hour>=2&&hour<6){status='02:00–06:00 休息';return;}
+     if(hour>=2&&hour<6){waiting('02:00–06:00 休息');return;}
      if(now<retryAt)return;
+     if(state.pending){
+       const pending=state.pending;
+       if(pending.sessionId!==id){status='绑定已改变，等待原会话核对';return;}
+       const resolved=await ctx.sessionController.resolveAgent(id);
+       const agent=resolved?.agent||resolved;
+       const events=agent?.session?.snapshotEvents?.();
+       if(!Array.isArray(events)||agent.status!=='idle'){status='等待原会话核对投递';return;}
+       if(snapshotHas(events,pending.run)){commitDelivery(state,pending,now);commit();}
+       else if(pending.phase==='prepared'){delete state.pending;commit();}
+       else if(pending.phase==='rejected'){delete state.pending;commit();}
+       else{status='投递待核实，保留线索；请检查会话后恢复';return;}
+     }
      if(!state.checkedLastRun){
        const last=state.history.filter(row=>row.type==='开始').at(-1);
        if(last&&!state.history.some(r=>r.run===last.run&&r.type==='回合结束')){
@@ -68,19 +87,28 @@ export function apply(ctx){
      if([...ctx.workspaceRegistry.archivedSessionIds||[]].some(x=>same(x,id))){status='绑定会话已归档';return;}
      const resolved=await ctx.sessionController.resolveAgent(id), agent=resolved?.agent||resolved;
      if(!same(agent?.session?.id||agent?.id,id)||!agent.followup)throw Error('无法载入绑定的主会话');
-     if(stopped||agent.status!=='idle'){status='主会话正在处理其他事情，保留这次机会';return;}
+     if(stopped||agent.status!=='idle'){waiting('主会话正在处理其他事情，保留这次机会');return;}
      const inputs=lifeInputs(ctx.cenShuLifeShared,id);
      op.context.可调整的生活意向=inputs.intentions;
      op.context.实际心情=inputs.mood;
      state.inputAt=Date.now();
      try{await summarize(op,id);}catch(e){state.geminiRetryAt=Date.now()+([401,402,403].includes(e.httpStatus)?3600000:180000);log('处境摘要未取得，使用原始记录',e.message);}
      if(stopped||agent.status!=='idle'||!enabled(id))return;
-     const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';
-     const notes=structuredClone(state.notes);
-     state.nextConsiderAt=null;state.lastAt=now;state.cursor=op.cursor;state.signature=snap.signature;
-     for(const n of state.notes)if(n.due<=now)n.due=null;
+     const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
+     const notes=[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
+     const p={run,sessionId:id,phase:'prepared',cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
+     state.pending=p;
      log('开始',op.reason+' · '+op.changes.length+' 项变化');
-     await agent.followup(message(op,notes,run));
+     p.phase='dispatching';commit();
+     try{await agent.followup(message(op,notes,run));}
+     catch(error){
+       const events=agent.session?.snapshotEvents?.();
+       if(snapshotHas(events,run))commitDelivery(state,p,Date.now());
+       else if(Array.isArray(events)&&agent.status==='idle')p.phase='rejected';
+       commit();throw error;
+     }
+     if(commitDelivery(state,p,Date.now()))commit();
+     for(const n of notes)log('已交还打算',n.id+' · '+n.text);
      await agent.whenIdle();
      if(active?.ended)status='本轮已结束';
      if(!active?.ended)log('结束待核实','请求已交给主会话；没有观察到本轮结束回执');
@@ -89,14 +117,17 @@ export function apply(ctx){
  }
  function observe(e){
    const d=e.data||{},m=d.message||{};
-   if(e.type==='user/message'&&[d.source?.agencyId,m.source?.agencyId,d.id,m.id].includes(active.run))active.tracking=true;
+   if(e.type==='user/message'&&[d.source?.agencyId,m.source?.agencyId,d.id,m.id].includes(active.run)){
+     active.tracking=true;if(state.pending?.run===active.run&&commitDelivery(state,state.pending,Date.now()))commit();
+   }
    if(!active.tracking||active.ended)return;
    if(e.type==='request/header'){const h=d.header||{};const model=typeof h.model==='string'?h.model:h.model?.id;if(model)state.mainModel=model;commit();}
    if(e.type==='tool/call'){active.calls.set(d.callId,d.name);log('调用工具',d.name);}
    if(e.type==='tool/result'){
      const tool=active.calls.get(m.toolCallId)||m.toolCallId||'工具';
      const err=m.isError?String(m.content?.find(x=>x.type==='text')?.text||'').split('https://')[0].slice(0,180):'';
-     log(m.isError?'工具报错':'工具返回',tool+(err?' · '+err:''));
+     const delivery=sendReceipt(tool,m);
+     log(delivery?.type||(m.isError?'工具报错':'工具返回'),(delivery?.detail||tool)+(err?' · '+err:''));
    }
    if(e.type==='assistant/message'){const t=m.content?.filter?.(b=>b.type==='text').map(b=>b.text).join(' ');if(t)log('岑舒的选择或总结',t);}
    if(e.type==='turn/end'){active.ended=true;log('回合结束',[d.reason?.kind||'结束',d.reason?.error?.message].filter(Boolean).join(' · '));}
@@ -115,13 +146,16 @@ export function apply(ctx){
      return JSON.stringify(receipt);
    }
  }));
- ctx.effect(()=>ctx.tools.register({name:'censhu_agency_note',description:'保留自己的未竟事项及恢复线索，或移除已完成和改变主意的事项。',parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['keep','remove','read']},id:{type:'string'},text:{type:'string'},minutes:{type:'number'}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
+ ctx.effect(()=>ctx.tools.register({name:'censhu_agency_note',description:'保留自己的未竟事项及恢复线索，或移除已完成和改变主意的事项。',parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['keep','remove','read','private','uncertain']},id:{type:'string'},text:{type:'string'},minutes:{type:'number'},eventId:{type:'string'},when:{type:'string',enum:['event-stage','event-end']},resume:{type:'string'},shareMinutes:{type:'integer',minimum:1,maximum:1440}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
    if(!same(exec.agent?.session?.id||exec.agent?.id,bound()))throw Error('仅供绑定角色会话使用');
-   if(a.action==='keep'){const text=a.text?.trim();if(!text||text.length>500)throw Error('请简要写下事项和恢复线索');let n=state.notes.find(x=>x.id===a.id||x.text===text);if(!n){if(state.notes.length>=40)throw Error('请先整理已有事项');n={id:randomUUID()};state.notes.push(n);}Object.assign(n,{text,due:a.minutes>0?Date.now()+Math.min(a.minutes,43200)*60000:null});commit();}
-   if(a.action==='remove'){state.notes=state.notes.filter(n=>n.id!==a.id);commit();}
+   if(['private','uncertain'].includes(a.action)){log(a.action==='private'?'选择留给自己':'暂时拿不准',String(a.text||'').slice(0,200));return '已记录';}
+   if(a.action==='keep'){
+     if(a.eventId||a.when){if(!['event-stage','event-end'].includes(a.when)||!a.eventId||!ctx.cenShuLifeShared.status().events.some(e=>e.id===a.eventId))throw Error('请选择当前进行中的事件及对应阶段');}
+     const text=a.text?.trim();if(!text||text.length>500)throw Error('请简要写下事项和恢复线索');let n=state.notes.find(x=>x.id===a.id||x.text===text);if(!n){if(state.notes.length>=40)throw Error('请先整理已有事项');n={id:randomUUID()};state.notes.push(n);}Object.assign(n,{text,sessionId:bound(),shareUntil:a.shareMinutes>0?Date.now()+Math.min(a.shareMinutes,1440)*60000:0,eventId:a.eventId||null,when:a.when||null,resume:String(a.resume||'').slice(0,300),revision:(n.revision||0)+1,deliveredAt:null,deliveredRun:null,due:a.minutes>0?Date.now()+Math.min(a.minutes,43200)*60000:null});log('选择稍后',n.id+' · '+n.text);}
+   if(a.action==='remove'){state.notes=state.notes.filter(n=>n.id!==a.id);log('放下或完成打算',a.id);}
    return JSON.stringify(state.notes);
  }}));
- ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,mainModel:selectedModel()||state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,rhythm,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,mainModel:selectedModel()||state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
  const timer=setInterval(()=>{if(busy&&active&&enabled(active.id))save(lease,{sessionId:active.id,until:Date.now()+90000});void tick();},20000);timer.unref?.();void tick();
  ctx.effect(()=>()=>{stopped=true;clearInterval(timer);save(lease,{until:0});});
 }

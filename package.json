@@ -1,6 +1,6 @@
 {
   "name": "dsh-censhu-agency",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "main": "host.js",
   "exports": {
@@ -32,6 +32,9 @@
     "integration.js",
     "install.mjs",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "continuity.js",
+    "agency-plans.js",
+    "adapter.mjs"
   ]
 }
