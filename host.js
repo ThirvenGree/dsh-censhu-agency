@@ -52,6 +52,22 @@ export function apply(ctx){
    return ctx.sessionController.resolveAgent(state.worker.id);
  }
  const executionId=()=>state.worker?.id;
+ const regFile=path.join(home,'censhu-agency/control.json');
+ function interfaces(){
+   const life=ctx.cenShuLifeShared,inner=ctx.cenShuInnerLife;
+   const main=ctx.agents.roots?.().find(a=>same(a.session?.id||a.id,bound()));
+   return {life:['agencyLife','agencyPlan','searchEvents','eventPage','agencyConversation'].every(k=>typeof life[k]==='function'),
+     inner:['claimLifeTurn','registerAgencyWorker','agencyDevelop','agencyReview','receiveAgencyDiary'].every(k=>typeof inner[k]==='function'),
+     recall:main?!!ctx.tools.get('censhu_question_recall',main):null};
+ }
+ function ownership(){
+   const reg=read(regFile,{}),id=bound(),activeLease=read(lease,{});
+   const registered=reg.version===2&&!!id&&reg.sessionId===id&&reg.disabled!==true;
+   return {registered,held:registered&&activeLease.sessionId===id&&activeLease.until>Date.now(),enabled:enabled(id)};
+ }
+ function renew(){
+   const {registered}=ownership(),id=bound();save(lease,registered?{sessionId:id,until:Date.now()+90000}:{until:0});return registered;
+ }
  function enabled(id){
    const cfg=read(path.join(home,'speak-up-config.json'),{});
    return read(path.join(home,'censhu-agency/control.json'),{}).disabled!==true&&cfg.总开关===true&&cfg.试运行===false&&cfg.目标会话?.some(x=>same(x,id));
@@ -77,7 +93,8 @@ export function apply(ctx){
      const id=bound(), now=Date.now(), on=enabled(id)&&read(path.join(home,'censhu-agency/control.json'),{}).disabled!==true;
      const dest=displayIdNow();
      if(id&&dest&&state.displayBinding!=='life|'+id+'|'+dest){state.displayBinding='life|'+id+'|'+dest;log('独处会话已绑定','直接交流会话 '+id+'；岑舒生活执行会话 '+dest+'。本次读取了 '+adapterAudit.rows.length+' 个适配入口，'+adapterAudit.rows.filter(x=>!x.ok).length+' 项需要核对。');}
-     if(!on){save(lease,{until:0});status='主动总开关关闭、试运行或未绑定';return;}
+     if(!renew()){status='未接管，原入口按各自配置运行';return;}
+     if(!on){status='主动行动已暂停，仍保留接管';return;}
      if(!snapshotShown){
        const v=current(home,id),prior=state.history.filter(r=>r.run&&(!r.sessionId||r.sessionId===id)).at(-1);
        const notes=state.notes.filter(n=>!n.sessionId||n.sessionId===id);
@@ -99,7 +116,7 @@ export function apply(ctx){
      if(observed)snap.signature+=JSON.stringify([observed.run,observed.observed.id]);
      rhythm=timing(snap.pace,state,now);
      if(state.generation!==snap.feed.generation){state.generation=snap.feed.generation;state.cursor=snap.feed.sequence;commit();}
-     save(lease,{sessionId:id,until:now+90000});
+
      const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',hourCycle:'h23'}).format(now));
      if(hour>=2&&hour<6){waiting('02:00–06:00 休息');return;}
      if(now<retryAt)return;
@@ -240,6 +257,7 @@ export function apply(ctx){
      log('回合结束',[d.reason?.kind||'结束',d.reason?.error?.message].filter(Boolean).join(' · '));}
  }
  ctx.effect(()=>ctx.tools.guard(exec=>{
+   if(active?.tracking&&!active.ended&&same(exec.agent?.session?.id||exec.agent?.id,executionId())&&!enabled(active.id))return '主动行动已暂停或退出接管';
    if(state.handoff?.tracking&&same(exec.agent?.session?.id||exec.agent?.id,state.handoff.role)&&/(?:^|__)qq_(?:send|reply|speak)/i.test(exec.name||'')){
      const now=Date.now(),hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',hourCycle:'h23'}).format(now));
      if(liveHandoff!==state.handoff.id||!enabled(state.handoff.role)||hour>=2&&hour<6||now-state.handoff.at>15*60000)return '主动联系许可已失效';
@@ -351,7 +369,14 @@ export function apply(ctx){
    if(a.action==='remove'){const prior=state.notes.find(n=>n.id===a.id);state.notes=state.notes.filter(n=>n.id!==a.id);if(prior)log('放下或完成打算',prior.text+(a.text?' · '+String(a.text).slice(0,200):''));}
    return JSON.stringify(state.notes);
  }}));
- ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){try{requestGuard.check(req,'/state');if(req.method!=='GET')throw Error('仅允许读取');}catch{res.writeHead(403);res.end();return;}res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,rhythm,adapterAudit,displayBinding:{role:bound(),display:displayIdNow()},scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,rounds:state.rounds,mainModel:state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
- const timer=setInterval(()=>{if(busy&&active&&enabled(active.id))save(lease,{sessionId:active.id,until:Date.now()+90000});void tick();},20000);timer.unref?.();void tick();
+ for(const action of ['release','enable'])ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/'+action,handler(req,res){
+   try{requestGuard.check(req,'/'+action);if(req.method!=='POST')throw Error('只允许POST');const reg=read(regFile,{});
+     if(reg.version!==2||!reg.sessionId||reg.sessionId!==bound())throw Error('需要重新安装匹配的接管登记');
+     save(regFile,{...reg,disabled:action==='release'});renew();status=action==='release'?'已退出接管，原入口按各自配置运行':'已接管，主动行动取决于总开关';
+     res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(ownership()));
+   }catch(e){res.writeHead(e.status||400);res.end();}
+ }}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){try{requestGuard.check(req,'/state');if(req.method!=='GET')throw Error('仅允许读取');}catch{res.writeHead(403);res.end();return;}res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,ownership:ownership(),interfaces:interfaces(),csrf:requestGuard.token,rhythm,adapterAudit,displayBinding:{role:bound(),display:displayIdNow()},scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,rounds:state.rounds,mainModel:state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
+ const timer=setInterval(()=>{if(busy)renew();void tick();},20000);timer.unref?.();void tick();
  ctx.effect(()=>()=>{stopped=true;clearInterval(timer);save(lease,{until:0});});
 }
