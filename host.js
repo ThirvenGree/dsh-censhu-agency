@@ -13,7 +13,7 @@ import os from 'node:os';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {read,save,situation,opportunity,message} from './core.js';
+import {read,save,situation,opportunity,message,focusStateKey} from './core.js';
 export const name='censhu-agency';
 export const inject=['agents','sessionController','workspaceRegistry','tools','webServer','cenShuLifeShared','cenShuInnerLife'];
 const same=(a,b)=>!!a&&!!b&&String(a).replace(/^session-/,'')===String(b).replace(/^session-/,'');
@@ -191,7 +191,10 @@ export function apply(ctx){
      op.context.未竟线索=state.notes.filter(n=>n.sessionId===id&&n.triggerCue&&(!n.deliveredAt||op.changes.some(c=>c.at>n.deliveredAt))&&validAt(n,now)).map(n=>({id:n.id,revision:n.revision,text:n.text,why:n.why,triggerCue:n.triggerCue,lastConsideredAt:n.deliveredAt||null,cancelWhen:n.cancelWhen,sourceRefs:n.sourceRefs}));
      try{await summarize(op,id);}catch(e){state.geminiRetryAt=Date.now()+([401,402,403].includes(e.httpStatus)?3600000:180000);log('处境摘要未取得，使用原始记录',e.message);}
      if(stopped||agent.status!=='idle'||!enabled(id))return;
-     if(op.keepFocus){state.cursor=op.cursor;state.generation=op.generation;log('保持专注',op.context.处境摘要);commit();return;}
+     if(op.keepFocus){state.cursor=op.cursor;state.generation=op.generation;state.signature=snap.signature;
+       state.focusCheckedKey=focusStateKey(op.context.当前自述,state.notes.filter(n=>!n.sessionId||same(n.sessionId,id)));
+       state.focusCheckedUntil=Math.min(op.context.当前自述.截止,Date.now()+rhythm.naturalMinutes*60000);
+       log('保持专注',op.context.处境摘要);commit();return;}
      // Keep memory and private diary excerpts inside the character's own DSH turn.
      try{
        const recalled=ctx.cenShuLifeShared.snapshot({sessionId:id,purpose:'agency'}).memories||[];

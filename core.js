@@ -33,6 +33,7 @@ export function situation(home,now){
     兴趣:(interests.items||[]).filter(x=>!x.expiresAt||x.expiresAt>now).slice(-5).map(x=>x.topic)
   }};
 }
+export const focusStateKey=(focus,notes)=>JSON.stringify([focus,notes.filter(n=>n.triggerCue).map(n=>[n.id,n.revision,n.deliveredAt])]);
 export function opportunity(snap,state,now){
   const {feed,pace}=snap;
   const cursor=state.generation===feed.generation?state.cursor:feed.sequence;
@@ -44,6 +45,7 @@ export function opportunity(snap,state,now){
   const matched=matchingNotes(state.notes,changes,now);
   const focus=snap.context?.当前自述;
   const focusOnly=focus?.截止>now&&!matched.length&&!snap.notices?.length&&snap.signature===state.signature&&(!state.nextConsiderAt||state.nextConsiderAt>now)&&fresh.length<24&&fresh.every(x=>x.kind==='event-stage'&&focus.关联事件&&x.data?.eventId===focus.关联事件);
+  if(focusOnly&&!fresh.length&&state.focusCheckedUntil>now&&state.focusCheckedKey===focusStateKey(focus,state.notes)&&state.generation===feed.generation)return null;
   if(focusOnly&&!focus.留意线索&&!state.notes.some(n=>n.triggerCue))return null;
   if(after<schedule.mergeSeconds*1000||(!changes.length&&!snap.notices?.length&&snap.signature===state.signature&&now<schedule.nextNaturalAt&&!matched.length))return null;
   return {cursor:batch.at(-1)?.sequence??feed.sequence,generation:feed.generation,
