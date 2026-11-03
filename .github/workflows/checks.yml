@@ -13,12 +13,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ThirvenGree/dsh-cen-shu-life
-          ref: 0f08f9069b8bb0b4bb547b97afbc725c433c810e
+          ref: 6dfbd8da86891e599a25e3221eb586e314e4f162
           path: .life
       - uses: actions/checkout@v4
         with:
           repository: ThirvenGree/dsh-censhu-inner-life
-          ref: c2f1dfddd781efc4695d08218edf1ba709a84dfc
+          ref: 938be0214e91339d39bbdd932df84826b4a5e198
           path: .inner
       - run: npm install --prefix .life --ignore-scripts --no-audit --no-fund
       - run: node --check client.js && node --check host.js && node --test agency.test.js integration.test.js inner-agency.test.js control.test.js timeline.test.js
