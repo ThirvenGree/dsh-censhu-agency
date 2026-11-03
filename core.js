@@ -24,10 +24,11 @@ export function situation(home,now){
   const remembered=(get('cen-shu-life/memory-writeback').sources||[]).filter(x=>x.sessionId===sessionId&&x.state==='reviewed'&&x.accepted>0).slice(-6);
   const privateContext={说明:'仅供自己回想。私人感受不自动对外分享。',最近日记:(diary.entries||[]).filter(x=>x.sourceId===sessionId&&x.shareState==='private'&&!x.supersededAt&&x.expiresAt>now).slice(-3).map(x=>({id:x.id,感受:x.feeling,反思:x.reflection})),之前提交:receipts.map(x=>({id:x.id,状态:x.status}))};
   const signature=JSON.stringify([(life.active||[]).filter(e=>e.endsAt<=now).map(e=>[e.id,e.stage]),privateContext.最近日记.map(x=>x.id),receipts.filter(x=>['reviewed','rejected','unconfirmed'].includes(x.status)).map(x=>[x.id,x.status]),remembered.map(x=>x.id),life.mode?.id,(diary.entries||[]).filter(x=>x.expiresAt>now&&!x.supersededAt&&x.shareState!=='private').slice(-3).map(x=>x.id),(interests.items||[]).filter(x=>!x.expiresAt||x.expiresAt>now).slice(-5).map(x=>[x.id,x.state]),(active?.lifeIntentions||[]).filter(x=>x.expiresAt>now).map(x=>[x.id,x.status])]);
-  return {feed,signature,privateContext,pace:active?.values||{},context:{
+  const gatewayAt=get('censhu-agency/gateway-ready').at||0;
+  return {feed,gatewayAt,signature:signature+'|gateway:'+gatewayAt,privateContext,pace:active?.values||{},context:{
     手头的事:(life.active||[]).map(x=>({id:x.id,事件:x.name,进度:x.stageText})),
     心情:life.mode,
-    当前自述:(()=>{const v=get('censhu-agency/current');return v.sessionId===sessionId&&v.until>now?{活动:v.activity,想法:v.thought,精力:v.energy,判断:v.judgment,关联事件:v.focusEventId,疲惫是否影响当前活动:v.fatigued,截止:v.until}:null;})(),
+    当前自述:(()=>{const v=get('censhu-agency/current');return v.sessionId===sessionId&&v.until>now?{活动:v.activity,留意线索:v.attentionCue,想法:v.thought,精力:v.energy,判断:v.judgment,关联事件:v.focusEventId,疲惫是否影响当前活动:v.fatigued,截止:v.until}:null;})(),
     最近的独处念头:(diary.entries||[]).filter(x=>x.expiresAt>now&&!x.supersededAt&&x.shareState!=='private').slice(-3).map(x=>({id:x.id,感受:x.feeling,想法:x.intention})),
     兴趣:(interests.items||[]).filter(x=>!x.expiresAt||x.expiresAt>now).slice(-5).map(x=>x.topic)
   }};
@@ -42,11 +43,12 @@ export function opportunity(snap,state,now){
   const changes=batch.map(x=>({id:x.data?.eventId||x.id,kind:x.kind,at:x.at,观察编号:x.id,当时的反应:x.data?.reaction?.text,已有心情回执:x.data?.moodReceipts?.slice(-4).map(r=>({编号:r.id,已应用:r.applied===true})),name:x.data?.name||x.data?.title,stage:x.data?.stageText,感受:x.data?.reflection||x.data?.reason}));
   const matched=matchingNotes(state.notes,changes,now);
   const focus=snap.context?.当前自述;
-  if(focus?.截止>now&&!matched.length&&!snap.notices?.length&&snap.signature===state.signature&&(!state.nextConsiderAt||state.nextConsiderAt>now)&&fresh.length<24&&fresh.every(x=>x.kind==='event-stage'&&focus.关联事件&&x.data?.eventId===focus.关联事件))return null;
+  const focusOnly=focus?.截止>now&&!matched.length&&!snap.notices?.length&&snap.signature===state.signature&&(!state.nextConsiderAt||state.nextConsiderAt>now)&&fresh.length<24&&fresh.every(x=>x.kind==='event-stage'&&focus.关联事件&&x.data?.eventId===focus.关联事件);
+  if(focusOnly&&!focus.留意线索&&!state.notes.some(n=>n.triggerCue))return null;
   if(after<schedule.mergeSeconds*1000||(!changes.length&&!snap.notices?.length&&snap.signature===state.signature&&now<schedule.nextNaturalAt&&!matched.length))return null;
   return {cursor:batch.at(-1)?.sequence??feed.sequence,generation:feed.generation,
     reason:snap.notices?.length?'新的外部情况':matched.length?'续接先前的打算':batch.length?'生活有变化':snap.signature!==state.signature?'心情、兴趣或打算发生变化':state.notes.some(n=>n.due&&n.due<=now)?'自己的提醒':'自然空当',
-    changes,matched,
+    changes,matched,focusOnly,
     context:snap.context};
 }
 export function message(op,notes,id){
