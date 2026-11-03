@@ -34,3 +34,17 @@ test('真实生活引擎：调低意向、回读权重、回执重放和拒绝�
  assert.equal(intentionChoice(engine,'books').priority,0);
  }finally{rmSync(home,{recursive:true,force:true});}
 });
+
+test('角色预算联用：同一阶段使用一份原文，独处读回执只认入场记录，折叠资料可按当前回合展开',{skip:!process.env.LIFE_PLUGIN_ROOT||!process.env.INNER_PLUGIN_ROOT},async()=>{
+ const {roleContextBudget}=await import(pathToFileURL(path.resolve(process.env.LIFE_PLUGIN_ROOT,'lib/context-budget.js')));
+ const {acknowledgeContext}=await import(pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT,'lib/assembly-receipt.js')));
+ const {contextParts}=await import('./core.js');
+ const pages={},op={context:{手头的事:[{id:'evt1',进度:'整理票根'}],备用文档:'折叠的私有资料'.repeat(2400)},changes:[]};
+ const budget=roleContextBudget(),agent={session:{id:'isolated',requestContext:()=>({model:'test',contextWindow:65536})}};
+ const lifeParts=[{key:'life:event:evt1:整理票根',priority:83,text:'角色生活模拟记录，阶段：整理票根'},{text:'【岑舒独处后的临时状态】[{"id":"entry-ok"}]。这是你自己的生活感受与打算',priority:70}];
+ const stage=budget.add({contexts:[],sections:[],tools:[]},agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),'资料可按需展开');
+ const final=budget.add(stage,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆');assert.equal(pages.备用文档[0],op.context.备用文档);
+ assert.doesNotMatch(JSON.stringify(final),/折叠的私有资料/);assert.equal((JSON.stringify(final).match(/整理票根/g)||[]).length,1);
+ const seen=[];acknowledgeContext({context:()=>({ids:['entry-ok','not-admitted']}),seen:(_s,ids)=>seen.push(...ids)},'isolated',final.contexts);
+ assert.deepEqual(seen,['entry-ok']);
+});
