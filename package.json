@@ -35,6 +35,7 @@
     "README.md",
     "continuity.js",
     "prospective.js",
+    "verify-sent.js",
     "control.mjs",
     "control-install.mjs",
     "timeline.js",

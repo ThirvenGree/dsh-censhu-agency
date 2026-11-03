@@ -1,3 +1,4 @@
+import {verifySent} from './verify-sent.js';
 import {validAt,unchangedNotes,updateNote} from './prospective.js';
 import {createRequestGuard} from './request-guard.js';
 import {dayOf,reserveContact} from './safety.js';
@@ -105,6 +106,16 @@ export function apply(ctx){
          prior?'上次行动记录：'+prior.type+' · '+prior.detail:''].filter(Boolean).join('\n');
        if(state.lastDisplaySummary!==text){state.lastDisplaySummary=text;log('当前情况与打算',text);}
        snapshotShown=true;
+     }
+     const pendingCheck=(state.awaitingReplies||[]).filter(h=>h.role===id).reverse().find(h=>(h.ids||[]).some(mid=>!h.platformChecks?.[mid]?.confirmed&&(h.platformChecks?.[mid]?.nextAt||0)<=now));
+     if(pendingCheck){
+       const checks=pendingCheck.platformChecks||={};
+       const mid=pendingCheck.ids.find(mid=>!checks[mid]?.confirmed&&(checks[mid]?.nextAt||0)<=now);
+       const attempts=(checks[mid]?.attempts||0)+1;
+       checks[mid]={attempts,nextAt:now+Math.min(24*3600000,60000*2**Math.min(attempts,10))};commit();
+       void verifySent(id,mid).then(confirmed=>{
+         if(confirmed){checks[mid]={confirmed:true,at:Date.now(),attempts};log('QQ 平台回查确认','消息编号 '+mid+' 的发送账号和私聊对象均已核对',pendingCheck.run);commit();}
+       }).catch(()=>{});
      }
      let incomingWindow;
      for(const hand of state.awaitingReplies||[]){

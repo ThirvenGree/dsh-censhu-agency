@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ThirvenGree/dsh-censhu-inner-life
-          ref: 938be0214e91339d39bbdd932df84826b4a5e198
+          ref: 6cdd1d6a8bccf7a7e477aaa9ab7bbc4bdab3db16
           path: .inner
       - run: npm install --prefix .life --ignore-scripts --no-audit --no-fund
       - run: node --check client.js && node --check host.js && node --test agency.test.js integration.test.js inner-agency.test.js control.test.js timeline.test.js
