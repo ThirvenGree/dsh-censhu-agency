@@ -27,6 +27,11 @@ export function settleChoice(choice,reason,now){
  choice.phase='retry';choice.failures=(choice.failures||0)+1;
  choice.retryAt=now+Math.min(60,5*2**Math.min(4,choice.failures-1))*60000;
 }
+export function nextIncoming(messages,ids){
+ const at=messages.findLastIndex(m=>m.role==='self'&&ids.includes(String(m.id)));
+ if(at<0)return null;
+ return messages.slice(at+1).find(m=>m.role==='user'&&m.id&&m.at)||null;
+}
 export function snapshotHas(events,run){
  return events?.some(e=>e.type==='user/message'&&(e.data?.id===run||e.data?.source?.agencyId===run));
 }
@@ -45,10 +50,10 @@ export function sendReceipt(tool,m){
    if(r?.ok===false||r?.verified===false)continue;
    if(r.ok===true&&Array.isArray(r.receipts)){
      const ids=r.receipts.map(x=>x?.messageId).filter(id=>/^-?[1-9]\d*$/.test(String(id)));
-     if(ids.length)return {type:ids.length===r.sent&&!r.failed?'QQ 已确认发出':'QQ 部分已确认',detail:tool+' · '+ids.join('、')};
+     if(ids.length)return {type:ids.length===r.sent&&!r.failed?'QQ 已确认发出':'QQ 部分已确认',messageIds:ids.map(String),detail:tool+' · '+ids.join('、')};
    }
    const id=r?.messageId??r?.message_id;
-   if((r?.ok===true||r?.verified===true)&&/^-?[1-9]\d*$/.test(String(id)))return {type:'QQ 已确认发出',detail:tool+' · '+id};
+   if((r?.ok===true||r?.verified===true)&&/^-?[1-9]\d*$/.test(String(id)))return {type:'QQ 已确认发出',messageIds:[String(id)],detail:tool+' · '+id};
  }
  return {type:'发送已调用 · 缺平台回执',detail:tool};
 }

@@ -104,3 +104,16 @@ test('state request blocks rebinding and cross-site access',async()=>{
  for(const headers of [{host:'evil.example:3388'},{host:'localhost:3388',origin:'https://evil.example'},{host:'localhost:3388','sec-fetch-site':'cross-site'}])assert.throws(()=>g.check({headers,method:'GET',socket:{localPort:3388}},'/state'));
  g.check({headers:{host:'127.0.0.1:3388'},method:'GET',socket:{localPort:3388}},'/state');
 });
+
+test('follow-up observation requires a confirmed outgoing message and a later real incoming message',async()=>{
+ const {nextIncoming}=await import('./continuity.js');
+ const messages=[{id:'1',role:'user',at:1},{id:'2',role:'self',at:2},{id:'3',role:'self',at:3},{id:'4',role:'user',at:4}];
+ assert.equal(nextIncoming(messages,['2','3']).id,'4');assert.equal(nextIncoming(messages,['missing']),null);assert.equal(nextIncoming(messages.slice(0,3),['2']),null);
+});
+test('focus batches ordinary stages without consuming them, but new events, reminders and notices can wake',()=>{
+ const now=Date.now(),state={lastAt:now-3600000,generation:'g',cursor:0,signature:'s',notes:[]},stage={id:'one',kind:'event-stage',sequence:1,data:{eventId:'scan'}};
+ const snap={context:{当前自述:{截止:now+600000,关联事件:'scan'}},feed:{generation:'g',sequence:1,items:[stage]},signature:'s',pace:{}};
+ assert.equal(opportunity(snap,state,now),null);assert.equal(state.cursor,0);
+ assert.ok(opportunity({...snap,notices:[{id:'x'}]},state,now));assert.ok(opportunity(snap,{...state,notes:[{id:'n',due:now-1}]},now));
+ assert.ok(opportunity({...snap,feed:{...snap.feed,items:[{...stage,kind:'event-end'}]}},state,now));
+});
