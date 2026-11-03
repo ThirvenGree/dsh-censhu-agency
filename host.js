@@ -116,6 +116,7 @@ export function apply(ctx){
        }
        state.checkedLastRun=true;commit();
      }
+     if(dest && !state.pending && state.choice?.phase!=='delivered' && state.worker?.id!==dest)await worker(id);
      snap.notices=observations(home,id,state.seenNotices,now);
      const choice=state.choice?.sessionId===id?state.choice:null;
      if(choice?.phase==='delivered'){
