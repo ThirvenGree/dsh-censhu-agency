@@ -13,6 +13,7 @@ export function installControl(profile){
    const root=path.join(modules,pkg);if(!fs.existsSync(root))return;
    const dest=path.join(root,file),row=plans.find(x=>x.dest===dest)||{dest,src:fs.readFileSync(dest,'utf8').replaceAll('\r\n','\n')};
    if(!plans.includes(row))plans.push(row);
+   if(to.includes('x.agencyDecision===')&&row.src.includes('!engine.config.sessionIds?.[0]||!agencyOwner('))return;
    if(from.startsWith('fatigue:(c.minute')&&row.src.includes('fatigue:agencyOwner('))return;
    if(to.includes('agencyDevelop:async(part)=>')&&row.src.includes('agencyDevelop:async(part)=>')||to.startsWith('  agencyLife(request){')&&row.src.includes('  agencyLife(request){')||row.src.includes(to)||to.includes("if(agencyOwner()){agencySignal('抖音来信'")&&row.src.includes('mark.agencyOffer={id,last:'))return;
    if(row.src.split(from).length!==2)throw Error('请重新适配 '+pkg+'/'+file+'：'+from.slice(0,65));
@@ -108,6 +109,7 @@ export function installControl(profile){
  patch('dsh-cen-shu-life','lib/engine.js',"?(self?.energy==='tired'||(!['tired','rested'].includes(self?.energy)&&this.state.active.some(e=>e.effect==='fatigue')))","?(self?.fatigued??(self?.energy==='tired'||(!['tired','rested'].includes(self?.energy)&&this.state.active.some(e=>e.effect==='fatigue'))))");
  patch('dsh-bili-whale','lib/client.js','choices[v.intent] || (v.reconsider','v.nextThought || v.reflection || choices[v.intent] || (v.reconsider');
  patch('dsh-douyin-browser-local','client.js',"note(({yes:'想看',no:'不想看',unsure:'不确定'})[v.intent]||'等待判断')","note(v.nextThought||v.reflection||({yes:'想看',no:'不想看',unsure:'不确定'})[v.intent]||'等待判断')");
+ patch('dsh-cen-shu-life','lib/life-intentions.js','(!agencyOwner(engine.config.sessionIds[0])||','(!engine.config.sessionIds?.[0]||!agencyOwner(engine.config.sessionIds[0])||');
  for(const r of plans){
    const imp="import {owner as agencyOwner,signal as agencySignal,current as agencyCurrent} from './censhu-control.mjs';";
    if(!r.dest.endsWith('client.js')&&!r.src.includes(imp))r.src=imp+'\n'+r.src;

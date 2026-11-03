@@ -225,6 +225,11 @@ export function apply(ctx){
      log('生活事件回执',({start:'开始',advance:'推进',end:'结束'}[a.action]||a.action)+' · '+(result?.name||a.id)+(result?.stageText?'\n'+result.stageText:''));return JSON.stringify(result);
    }
  }));
+ ctx.effect(()=>ctx.tools.register({name:'censhu_agency_event_history',description:'按生活事件编号回看实际发生的阶段及时间。返回最近八条；需要再往前看时传入 olderBefore。查不到时可保留不确定。',parameters:{type:'object',required:['eventId'],properties:{eventId:{type:'string'},before:{type:'integer',minimum:1}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
+   if(!active?.tracking||active.ended||!same(exec.agent?.session?.id||exec.agent?.id,active.id))throw Error('仅供绑定角色的主动回合');
+   if(!ctx.cenShuLifeShared.eventPage)throw Error('生活插件尚未提供事件回看接口');
+   return JSON.stringify(ctx.cenShuLifeShared.eventPage({sessionId:active.id,eventId:a.eventId,before:a.before}));
+ }}));
  ctx.effect(()=>ctx.tools.register({name:'censhu_agency_note',description:'保留自己的未竟事项及恢复线索，或移除已完成和改变主意的事项。',parameters:{type:'object',required:['action'],properties:{action:{type:'string',enum:['keep','remove','read','private','uncertain']},id:{type:'string'},text:{type:'string'},minutes:{type:'number'},eventId:{type:'string'},when:{type:'string',enum:['event-stage','event-end']},resume:{type:'string'},shareMinutes:{type:'integer',minimum:1,maximum:1440}}},output:{schema:{type:'string'},render:(_a,t)=>[{type:'text',text:t}]},execute(a,exec){
    if(!same(exec.agent?.session?.id||exec.agent?.id,bound()))throw Error('仅供绑定角色会话使用');
    if(['private','uncertain'].includes(a.action)){log(a.action==='private'?'选择留给自己':'暂时拿不准',String(a.text||'').slice(0,200));return '已记录';}
