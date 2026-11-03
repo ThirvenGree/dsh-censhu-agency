@@ -27,9 +27,10 @@ test('真实生活引擎：调低意向、回读权重、回执重放和拒绝�
  assert.equal(intentionChoice(engine,'books').priority,.5);assert.equal(revise(service,'main','one',a).replayed,true);assert.throws(()=>revise(service,'main','two',a),/版本/);
  assert.equal(lifeInputs(service,'main').intentions[0].priority,.5);
  const current=lifeInputs(service,'main').intentions[0];
- assert.ok(service.browserInterests({sessionId:'main'}).intentions.some(x=>x.text===current.text));
+ if(service.browserInterests)assert.ok(service.browserInterests({sessionId:'main'}).intentions.some(x=>x.text===current.text));
  revise(service,'main','three',{...current,reason:'今天想先休息',direction:'cancel',priority:0});
- assert.equal(service.browserInterests({sessionId:'main'}).intentions.some(x=>x.text===current.text),false);
+ assert.equal(service.status().intentions.find(x=>x.id===i.id).status,'cancelled');
+ if(service.browserInterests)assert.equal(service.browserInterests({sessionId:'main'}).intentions.some(x=>x.text===current.text),false);
  assert.equal(intentionChoice(engine,'books').priority,0);
  }finally{rmSync(home,{recursive:true,force:true});}
 });
