@@ -41,3 +41,7 @@ export function sendReceipt(tool,m){
  }
  return {type:'发送已调用 · 缺平台回执',detail:tool};
 }
+export function unchangedSession(events,pending){
+ if(!Array.isArray(events)||!Number.isSafeInteger(pending.beforeSeq))return false;
+ return events.at(-1)?.seq===pending.beforeSeq&&!snapshotHas(events,pending.run);
+}

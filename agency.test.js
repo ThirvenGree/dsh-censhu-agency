@@ -58,3 +58,10 @@ test('共享规划只取本会话主动选择公开给规划且仍有效的打�
  assert.deepEqual(agencyPlans(dir,'other',now),[]);
  }finally{rmSync(home,{recursive:true,force:true});}
 });
+import {unchangedSession} from './continuity.js';
+test('未投递的崩溃恢复必须有同一会话序列依据，不盲重发',()=>{
+ const pending={run:'x',beforeSeq:24};
+ assert.ok(unchangedSession([{seq:24,type:'turn/end'}],pending));
+ assert.equal(unchangedSession([{seq:25,type:'agent/inbox/spliced'}],pending),false);
+ assert.equal(unchangedSession([],pending),false);
+});

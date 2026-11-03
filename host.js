@@ -1,4 +1,4 @@
-import {commitDelivery,snapshotHas,timing,sendReceipt} from './continuity.js';
+import {commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession} from './continuity.js';
 import {lifeInputs,revise,nextWindow} from './integration.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -69,7 +69,7 @@ export function apply(ctx){
        if(!Array.isArray(events)||agent.status!=='idle'){status='等待原会话核对投递';return;}
        if(snapshotHas(events,pending.run)){commitDelivery(state,pending,now);commit();}
        else if(pending.phase==='prepared'){delete state.pending;commit();}
-       else if(pending.phase==='rejected'){delete state.pending;commit();}
+       else if(pending.phase==='rejected'||unchangedSession(events,pending)){delete state.pending;commit();}
        else{status='投递待核实，保留线索；请检查会话后恢复';return;}
      }
      if(!state.checkedLastRun){
@@ -96,7 +96,7 @@ export function apply(ctx){
      if(stopped||agent.status!=='idle'||!enabled(id))return;
      const run=randomUUID();active={id,run,calls:new Map()};status='岑舒正在自主决定';state.lastWait=null;
      const notes=[...op.matched,...state.notes.filter(n=>!n.deliveredAt&&!n.eventId&&!n.due)];
-     const p={run,sessionId:id,phase:'prepared',cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
+     const p={run,sessionId:id,phase:'prepared',beforeSeq:agent.session?.snapshotEvents?.()?.at(-1)?.seq,cursor:op.cursor,generation:op.generation,signature:snap.signature,at:now,previousWindow:state.nextConsiderAt,notes:notes.map(n=>({id:n.id,revision:n.revision||0}))};
      state.pending=p;
      log('开始',op.reason+' · '+op.changes.length+' 项变化');
      p.phase='dispatching';commit();
@@ -104,7 +104,7 @@ export function apply(ctx){
      catch(error){
        const events=agent.session?.snapshotEvents?.();
        if(snapshotHas(events,run))commitDelivery(state,p,Date.now());
-       else if(Array.isArray(events)&&agent.status==='idle')p.phase='rejected';
+       else if(agent.status==='idle'&&unchangedSession(events,p))p.phase='rejected';
        commit();throw error;
      }
      if(commitDelivery(state,p,Date.now()))commit();
