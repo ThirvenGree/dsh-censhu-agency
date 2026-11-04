@@ -35,15 +35,45 @@ test('真实生活引擎：调低意向、回读权重、回执重放和拒绝�
  }finally{rmSync(home,{recursive:true,force:true});}
 });
 
-test('角色预算联用：同一阶段使用一份原文，独处读回执只认入场记录，折叠资料可按当前回合展开',{skip:!process.env.LIFE_PLUGIN_ROOT||!process.env.INNER_PLUGIN_ROOT},async()=>{
+test('角色预算联用：三方省略原文可按会话隔离分页取回，读取不重记入场回执',{skip:!process.env.LIFE_PLUGIN_ROOT||!process.env.INNER_PLUGIN_ROOT},async()=>{
  const {roleContextBudget}=await import(pathToFileURL(path.resolve(process.env.LIFE_PLUGIN_ROOT,'lib/context-budget.js')));
  const {acknowledgeContext}=await import(pathToFileURL(path.resolve(process.env.INNER_PLUGIN_ROOT,'lib/assembly-receipt.js')));
  const {contextParts}=await import('./core.js');
  const pages={},op={context:{手头的事:[{id:'evt1',进度:'整理票根'}],备用文档:'折叠的私有资料'.repeat(2400)},changes:[]};
- const budget=roleContextBudget({plan:input=>({reason:'本轮关注事件与日记',allocations:Object.fromEntries(['life','inner','agency'].map(k=>[k,{tokens:3000,reason:'当前任务'}])),order:input.candidates.filter(x=>!x.required&&(/角色生活模拟|临时状态/.test(x.excerpt))).map(x=>x.id)})}),agent={session:{id:'isolated',requestContext:()=>({model:'test',contextWindow:65536})}};
- const lifeParts=[{key:'life:event:evt1:整理票根',text:'角色生活模拟记录，阶段：整理票根'},{owner:'inner',text:'【岑舒独处后的临时状态】[{"id":"entry-ok"}]。这是你自己的生活感受与打算'}];
- const final=await budget.assemble(agent,()=>budget.assemble(agent,()=>({contexts:[],sections:[],tools:[]}),v=>budget.add(v,agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),'资料可按需展开')),v=>budget.add(v,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆'));assert.equal(pages.备用文档[0],op.context.备用文档);
+ let plans=0;const accepted=[],onAccepted=owner=>text=>accepted.push({owner,text});
+ const budget=roleContextBudget({plan:input=>{plans++;return {reason:'本轮关注事件与日记',allocations:Object.fromEntries(['life','inner','agency'].map(k=>[k,{tokens:3000,reason:'当前任务'}])),order:input.candidates.filter(x=>!x.required&&(/角色生活模拟|临时状态/.test(x.excerpt))).map(x=>x.id)};}}),agent={session:{id:'isolated',requestContext:()=>({model:'test',contextWindow:65536})}};
+ const lifeText='生活省略原文：这张旧票根还没有核实日期。\n🌿先保留不确定性。\n'.repeat(160),innerText='独处省略原文：这只是今天的感受，不是青枔说的话。\n🍃也许以后会改变想法。\n'.repeat(160);
+ const lifeParts=[{key:'life:event:evt1:整理票根',text:'角色生活模拟记录，阶段：整理票根'},{owner:'inner',text:'【岑舒独处后的临时状态】[{"id":"entry-ok"}]。这是你自己的生活感受与打算'},{key:'life:omitted',text:lifeText}];
+ const innerParts=[{owner:'inner',key:'inner:omitted',text:innerText}];
+ const tool=budget.recallTool();
+ const final=await budget.assemble(agent,()=>budget.assemble(agent,()=>budget.assemble(agent,()=>({contexts:[],sections:[],tools:[tool]}),v=>budget.add(v,agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),'资料可按需展开',onAccepted('agency'))),v=>budget.add(v,agent,'contexts','censhu-inner-life-observations',innerParts,'可按需回忆',onAccepted('inner'))),v=>budget.add(v,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆',onAccepted('life')));assert.equal(pages.备用文档[0],op.context.备用文档);
  assert.doesNotMatch(JSON.stringify(final),/折叠的私有资料/);assert.equal((JSON.stringify(final).match(/整理票根/g)||[]).length,1);
+ assert.doesNotMatch(JSON.stringify(final),/生活省略原文|独处省略原文/);assert.equal(plans,1);
  const seen=[];acknowledgeContext({context:()=>({ids:['entry-ok','not-admitted']}),seen:(_s,ids)=>seen.push(...ids)},'isolated',final.contexts);
  assert.deepEqual(seen,['entry-ok']);
+ assert.equal(accepted.length,3);const originalReceipts=structuredClone(accepted);
+ const registered=final.tools.find(x=>x.name==='censhu_context_recall');assert.equal(registered,tool);
+ const read=async(args,caller=agent)=>JSON.parse(await registered.execute(args,{agent:caller}));
+ const first=await read({action:'catalog',limit:2});assert.equal(first.status,'ready');assert.equal(first.truncated,true);
+ const ref={snapshotId:first.snapshotId,version:first.version},entries=[...first.entries];let offset=first.nextOffset;
+ while(offset!==null){const page=await read({action:'catalog',...ref,offset,limit:2});assert.equal(page.status,'ready');assert.equal(page.snapshotId,ref.snapshotId);assert.equal(page.version,ref.version);entries.push(...page.entries);offset=page.nextOffset;}
+ assert.equal(entries.length,first.total);assert.equal(new Set(entries.map(x=>x.itemId)).size,first.total);
+ const omitted=[
+  {owner:'life',source:'cen-shu-life',key:'life:omitted',text:lifeText},
+  {owner:'inner',source:'censhu-inner-life-observations',key:'inner:omitted',text:innerText},
+  {owner:'agency',source:'censhu-agency-current',text:'备用文档：'+JSON.stringify(op.context.备用文档)}
+ ];
+ for(const expected of omitted){
+  const item=entries.find(x=>x.owner===expected.owner&&x.source===expected.source&&(expected.key?x.key===expected.key:x.excerpt.startsWith('备用文档：')));
+  assert.ok(item,expected.owner+' 省略资料应可定位');assert.equal(item.selected,false);assert.equal(item.totalChars,expected.text.length);
+  let body='',cursor=0,pageCount=0;
+  do{const page=await read({action:'read',...ref,itemId:item.itemId,offset:cursor,limit:997});assert.equal(page.status,'ready');assert.equal(page.version,ref.version);assert.equal(page.item.version,item.version);assert.equal(page.totalChars,expected.text.length);body+=page.text;pageCount++;if(page.nextOffset!==null)assert.ok(page.nextOffset>cursor);assert.equal(page.truncated,page.nextOffset!==null);cursor=page.nextOffset;}while(cursor!==null);
+  assert.ok(pageCount>1);assert.equal(body,expected.text);
+  const foreign={session:{id:'another-session'}};
+  assert.equal((await read({action:'read',...ref,itemId:item.itemId,sessionId:'isolated'},foreign)).status,'forbidden');
+ }
+ assert.equal((await read({action:'catalog',...ref},{session:{id:'another-session'}})).status,'forbidden');
+ assert.equal((await read({action:'catalog',...ref,version:'0'.repeat(64)})).status,'version_mismatch');
+ assert.deepEqual(accepted,originalReceipts);assert.deepEqual(seen,['entry-ok']);assert.equal(plans,1);
+ budget.dispose();
 });

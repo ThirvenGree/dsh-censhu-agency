@@ -181,9 +181,20 @@ for(const [scenario,calls,phase] of [
  ['recall object',[['censhu_agency_method',{action:'recall'}]],'retry'],
  ['recall JSON',[['censhu_agency_method','{"action":"recall"}']],'retry'],
  ['page read',[['censhu_agency_context_page',{}]],'retry'],
+ ['budget catalog',[['censhu_context_recall',{action:'catalog'}]],'retry'],
+ ['budget page',[['censhu_context_recall','{"action":"read","itemId":"r1","offset":0}']],'retry'],
+ ['question recall',[['censhu_question_recall',{question:'以前的约定'}]],'retry'],
+ ['life context',[['censhu_life_context',{}]],'retry'],
+ ['memory read',[['censhu_read_memory',{backend:'openviking'}]],'retry'],
+ ['private comparison',[['censhu_private_archive',{action:'compare'}]],'retry'],
+ ['note read',[['censhu_agency_note','{"action":"read"}']],'retry'],
+ ['file read',[['read_file',{path:'diary.md'}]],'retry'],
  ['choose after recall',[['censhu_agency_method',{action:'recall'}],['censhu_agency_method',{action:'choose'}]],'verify'],
  ['recall after write',[['write',{file:'note.txt'}],['censhu_agency_method',{action:'recall'}]],'verify'],
  ['invalid method arguments',[['censhu_agency_method','{invalid']],'verify'],
+ ['archive save',[['censhu_private_archive',{action:'save'}]],'verify'],
+ ['note keep',[['censhu_agency_note',{action:'keep'}]],'verify'],
+ ['memory correction',[['censhu_correct_memory',{action:'replace'}]],'verify'],
 ]){
  test('recover a failed tool round from host events: '+scenario,profile(async(home,dir)=>{
   const {apply}=await import('./host.js');
