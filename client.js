@@ -46,7 +46,7 @@ window.__ModuleLoader__.load({id:'dsh-censhu-agency',factory(require){
  `;
  const when=t=>t?new Date(t).toLocaleTimeString('zh-CN'):'暂无记录';
  function Page(){
-   const [data,set]=R.useState(null),[error,fail]=R.useState(''),refresh=R.useRef(null);
+   const [data,set]=R.useState(null),[error,fail]=R.useState(''),[recovering,recover]=R.useState(false),refresh=R.useRef(null);
    R.useEffect(()=>{
      let live=true,busy=false;
      async function load(){if(document.hidden||busy)return;busy=true;try{
@@ -65,6 +65,7 @@ window.__ModuleLoader__.load({id:'dsh-censhu-agency',factory(require){
      h('div',{className:'metrics'},card('处境整理','Gemini',data?.geminiRetryAt>Date.now()?'暂缓重试至 '+when(data.geminiRetryAt):'最近成功 · '+when(data?.geminiAt)),card('选择与行动',data?.mainModel||'等待模型记录','由绑定会话判断、调用工具并调整打算'),card('下次自然空当',data?.nextConsiderAt?when(data.nextConsiderAt):'跟随生活节奏','生活变化或自己的提醒可以提前唤起')),
      h('article',{className:'card'},h('h3',null,'本轮共用上下文预算'),h('p',{className:'pre'},(data?.contextBudgets||[]).map(b=>b.detail).join('\n\n')||'等候首次组装。Gemini 按每轮话题分配生活、独处与主动进行的份额。')),
      h('article',{className:'card'},h('h3',null,'主动行动与接管'),h('p',null,'主会话问题回忆 · '+(data?.interfaces?.recall===true?'工具已注册':data?.interfaces?.recall===false?'未发现接口':'等待绑定会话载入')),h('p',null,data?.ownership?.registered?(data.ownership.enabled?'已接管，允许主动行动':'已接管，主动行动暂停'):'未接管，原入口按各自设置运行'),h('p',null,'关闭主动总开关只暂停岑舒主动行动。退出接管才让原定时器接手；宿主停止续租后，运行租约最多保留90秒。'),h('button',{type:'button',disabled:!data?.csrf,onClick:async()=>{try{const r=await fetch('/censhu-agency/'+(data.ownership.registered?'release':'enable'),{method:'POST',headers:{'x-censhu-csrf':data.csrf}});if(!r.ok)throw Error('HTTP '+r.status);await refresh.current?.();}catch(e){fail(String(e));}}},data?.ownership?.registered?'退出接管，恢复原入口':'重新接管')),
+     h('article',{className:'card'},h('h3',null,'恢复原打算'),h('p',null,data?.recovery?.reason||'正在核对恢复条件'),h('p',null,'仅重新考虑尚未行动、未表达的原打算，保留处境、证据与动作记录。休息时间、每日限额和其它退避继续生效，不会强制发送消息。'),h('button',{type:'button',disabled:recovering||!data?.csrf||!data?.recovery?.available,onClick:async()=>{recover(true);try{const r=await fetch('/censhu-agency/retry',{method:'POST',headers:{'x-censhu-csrf':data.csrf,'x-censhu-run':data.recovery.run}});const result=await r.json();if(!r.ok)throw Error(result.error||'HTTP '+r.status);await refresh.current?.();}catch(e){fail(String(e));}finally{recover(false);}}},recovering?'正在恢复…':'重新考虑原打算')),
      h('article',{className:'card'},h('h3',null,'动态节奏与插件联动'),
      h('p',null,data?.rhythm?data.rhythm.source+' · 合并变化 '+data.rhythm.mergeSeconds+' 秒 · 下次自然空当 '+when(data.rhythm.nextNaturalAt):'等待读取节奏'),
      ...[['受到的影响',data?.links?.incoming,'fromLabel'],['正在影响',data?.links?.outgoing,'toLabel']].map(([title,rows,key])=>h('details',{key:title},h('summary',null,title+' · '+(rows?.length??'待核实')), ...(rows||[]).map((x,i)=>h('p',{key:i},x[key]+' · '+x.status+' · '+x.detail)))),

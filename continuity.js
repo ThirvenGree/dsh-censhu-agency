@@ -28,6 +28,29 @@ export function settleChoice(choice,reason,now){
  choice.phase='retry';choice.failures=(choice.failures||0)+1;
  choice.retryAt=now+Math.min(60,5*2**Math.min(4,choice.failures-1))*60000;
 }
+/** A retry is permission to reconsider the original opportunity, never to replay
+ * an external action. Keep every other cooldown and the original evidence intact. */
+export function choiceRetryStatus(state,{stopped=false,running=false,agentsIdle=false,enabled=false,sessionId}={}){
+ const choice=state.choice;
+ const result={available:false,run:choice?.run||null,retryAt:choice?.retryAt||null};
+ const blocked=reason=>({...result,reason});
+ if(stopped)return blocked('插件正在停止');
+ if(!enabled)return blocked('请先开启主动行动并保持接管');
+ if(running||state.pending||!agentsIdle)return blocked('等待当前回合和投递核对结束');
+ if(!choice?.run||choice.phase!=='retry'||choice.sessionId!==sessionId)return blocked('没有可恢复的原打算');
+ if(choice.actionStarted||choice.expressed||choice.needsVerification||choice.confirmed)return blocked('已有行动、表达或待核实结果，不能重新执行');
+ if(!Number.isFinite(choice.retryAt)||choice.retryAt<=0)return blocked('已安排重新考虑，继续遵守其它等待条件');
+ return {...result,available:true,reason:'尚未行动或表达，可重新考虑原打算'};
+}
+export function requestChoiceRetry(state,options,expectedRun,now){
+ const status=choiceRetryStatus(state,options);
+ if(!expectedRun||expectedRun!==status.run)throw Object.assign(Error('原打算已变化，请刷新后重试'),{status:409});
+ if(!status.available)throw Object.assign(Error(status.reason),{status:409});
+ const choice=state.choice;
+ choice.retryAt=0;
+ choice.manualRetryRequestedAt=now;
+ return {run:status.run,previousRetryAt:status.retryAt};
+}
 export function nextIncoming(messages,ids){
  const at=messages.findLastIndex(m=>m.role==='self'&&ids.includes(String(m.id)));
  if(at<0)return null;

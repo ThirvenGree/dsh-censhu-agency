@@ -7,7 +7,7 @@ import {createRequestGuard} from './request-guard.js';
 import {dayOf,reserveContact} from './safety.js';
 import {queueDisplay,describePlan,describeActivity,describeCall,describeResult} from './timeline.js';
 import {observations,current,replyOrder,inspectAdapters} from './control.mjs';
-import {nextIncoming,settleChoice,commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession} from './continuity.js';
+import {nextIncoming,settleChoice,commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession,choiceRetryStatus,requestChoiceRetry} from './continuity.js';
 import {lifeInputs,revise,nextWindow} from './integration.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -80,6 +80,14 @@ export function apply(ctx){
  function enabled(id){
    const cfg=read(path.join(home,'speak-up-config.json'),{});
    return read(path.join(home,'censhu-agency/control.json'),{}).disabled!==true&&cfg.总开关===true&&cfg.试运行===false&&cfg.目标会话?.some(x=>same(x,id));
+ }
+ function retryOptions(){
+   const sessionId=bound(),lifeId=executionId()||displayIdNow();
+   const loaded=id=>ctx.agents.get?.(id)||ctx.agents.roots?.().find(a=>same(a.session?.id||a.id,id));
+   const main=loaded(sessionId),life=loaded(lifeId);
+   return {sessionId,stopped,running:busy||!!active||!!liveHandoff,
+     agentsIdle:!!sessionId&&!!lifeId&&!same(sessionId,lifeId)&&main?.status==='idle'&&life?.status==='idle',
+     enabled:ownership().registered&&enabled(sessionId)};
  }
  async function summarize(op,id){
    const require=createRequire(path.join(home,'profiles/desktop/package.json'));
@@ -450,7 +458,22 @@ export function apply(ctx){
      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(ownership()));
    }catch(e){res.writeHead(e.status||400);res.end();}
  }}));
- ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){try{requestGuard.check(req,'/state');if(req.method!=='GET')throw Error('仅允许读取');}catch{res.writeHead(403);res.end();return;}res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,lastHistoryProjection:state.lastHistoryProjection,requestProjection:requestProjectorStatus(ctx.llm),contextBudgets:ctx.cenShuLifeShared.contextBudgetStatus?.()||[],ownership:ownership(),interfaces:interfaces(),csrf:requestGuard.token,rhythm,adapterAudit,displayBinding:{role:bound(),display:displayIdNow()},scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,rounds:state.rounds,mainModel:state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/retry',handler(req,res){
+   try{
+     requestGuard.check(req,'/retry');
+     if(req.method!=='POST')throw Object.assign(Error('只允许 POST'),{status:405});
+     const previousChoice={...state.choice},previousHistory=state.history.slice(),previousStatus=status;
+     const result=requestChoiceRetry(state,retryOptions(),req.headers['x-censhu-run'],Date.now());
+     try{
+       status='已安排重新考虑原打算，继续遵守休息、限额及其它退避';
+       log('恢复原打算','只清除此机会的重试等待；保留原处境、证据与动作记录，由岑舒重新决定，不强制联系。',result.run);
+     }catch(error){state.choice=previousChoice;state.history=previousHistory;status=previousStatus;throw error;}
+     res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+     res.end(JSON.stringify({ok:true,run:result.run,scheduled:true}));
+     setImmediate(()=>void tick());
+   }catch(error){res.writeHead(error.status||400,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:error.message}));}
+ }}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){try{requestGuard.check(req,'/state');if(req.method!=='GET')throw Error('仅允许读取');}catch{res.writeHead(403);res.end();return;}res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,lastHistoryProjection:state.lastHistoryProjection,requestProjection:requestProjectorStatus(ctx.llm),contextBudgets:ctx.cenShuLifeShared.contextBudgetStatus?.()||[],ownership:ownership(),recovery:choiceRetryStatus(state,retryOptions()),interfaces:interfaces(),csrf:requestGuard.token,rhythm,adapterAudit,displayBinding:{role:bound(),display:displayIdNow()},scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,rounds:state.rounds,mainModel:state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
  const timer=setInterval(()=>{if(busy)renew();void tick();},20000);timer.unref?.();void tick();
  ctx.effect(()=>()=>{stopped=true;clearInterval(timer);active?.offModel?.();save(lease,{until:0});});
 }
