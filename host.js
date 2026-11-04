@@ -17,15 +17,10 @@ import {read,save,situation,opportunity,message,contextParts,focusStateKey} from
 export const name='censhu-agency';
 export const inject=['agents','sessionController','workspaceRegistry','tools','webServer','cenShuLifeShared','cenShuInnerLife'];
 const same=(a,b)=>!!a&&!!b&&String(a).replace(/^session-/,'')===String(b).replace(/^session-/,'');
-const readOnlyChoiceTools=new Set(['read','read_file','read_image','list_directory','grep','glob','web_search','censhu_agency_context_page','censhu_agency_event_history','censhu_agency_find_event','censhu_context_recall','censhu_question_recall','censhu_life_context','censhu_read_memory']);
-function isReadOnlyChoiceCall(name,args){
- if(readOnlyChoiceTools.has(name))return true;
- if(typeof args==='string'){
-   try{args=JSON.parse(args);}catch{return false;}
- }
- return name==='censhu_agency_method'&&args?.action==='recall'||name==='censhu_agency_note'&&args?.action==='read'||name==='censhu_private_archive'&&['read','list','search','compare'].includes(args?.action);
-}
 export function apply(ctx){
+ function isReadOnlyChoiceCall(name,args){
+   try{return ctx.cenShuLifeShared?.isReadOnlyTool?.({name,arguments:args})===true;}catch{return false;}
+ }
  const home=process.env.DSH_HOME||path.join(os.homedir(),'.dsh');
  const file=path.join(home,'censhu-agency/state.json'),lease=path.join(home,'censhu-agency/owner.json');
  const state=read(file,{version:1,lastAt:Date.now(),cursor:0,notes:[],history:[]});
@@ -69,7 +64,7 @@ export function apply(ctx){
  function interfaces(){
    const life=ctx.cenShuLifeShared,inner=ctx.cenShuInnerLife;
    const main=ctx.agents.roots?.().find(a=>same(a.session?.id||a.id,bound()));
-   return {life:['agencyLife','agencyPlan','searchEvents','eventPage','agencyConversation'].every(k=>typeof life[k]==='function'),
+   return {life:['agencyLife','agencyPlan','searchEvents','eventPage','agencyConversation','isReadOnlyTool'].every(k=>typeof life[k]==='function'),
      inner:['guardContactMedia','claimAgencyActionTurn','registerAgencyWorker','agencyDevelop','agencyReview','receiveAgencyDiary'].every(k=>typeof inner[k]==='function'),
      recall:main?!!ctx.tools.get('censhu_question_recall',main):null};
  }

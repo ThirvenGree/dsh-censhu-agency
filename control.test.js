@@ -7,6 +7,7 @@ import {pathToFileURL} from 'node:url';
 import {signal,observations,replyOrder,takeReply,owner,current} from './control.mjs';
 import {opportunity} from './core.js';
 import {commitDelivery} from './continuity.js';
+const {isReadOnlyTool}=await import(process.env.LIFE_PLUGIN_ROOT?pathToFileURL(path.resolve(process.env.LIFE_PLUGIN_ROOT,'lib/tool-semantics.js')):new URL('../dsh-cen-shu-life/lib/tool-semantics.js',import.meta.url));
 function profile(fn){return async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'agency-control-')),old=process.env.DSH_HOME;
  process.env.DSH_HOME=temp;const dir=path.join(temp,'censhu-agency');fs.mkdirSync(dir);
@@ -177,7 +178,7 @@ test('actual agency dispatch installs native ledger before followup and reuses t
  }finally{Date.now=clock;for(const off of offs.reverse())off();service.dispose();}
 }));
 
-for(const [scenario,calls,phase] of [
+for(const [scenario,calls,phase,policyMode] of [
  ['recall object',[['censhu_agency_method',{action:'recall'}]],'retry'],
  ['recall JSON',[['censhu_agency_method','{"action":"recall"}']],'retry'],
  ['page read',[['censhu_agency_context_page',{}]],'retry'],
@@ -195,11 +196,18 @@ for(const [scenario,calls,phase] of [
  ['archive save',[['censhu_private_archive',{action:'save'}]],'verify'],
  ['note keep',[['censhu_agency_note',{action:'keep'}]],'verify'],
  ['memory correction',[['censhu_correct_memory',{action:'replace'}]],'verify'],
+ ['new shared read',[['future_shared_read',{}]],'retry','extended'],
+ ['missing shared policy',[['censhu_context_recall',{action:'catalog'}]],'verify','missing'],
+ ['failed shared policy',[['censhu_context_recall',{action:'catalog'}]],'verify','failed'],
+ ['invalid shared policy',[['censhu_context_recall',{action:'catalog'}]],'verify','invalid'],
 ]){
  test('recover a failed tool round from host events: '+scenario,profile(async(home,dir)=>{
   const {apply}=await import('./host.js');
   const put=(file,data)=>{const dest=path.join(home,file);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,JSON.stringify(data));};
   const run='opportunity-1',now=Date.parse('2026-11-03T10:00:00+08:00');
+  const policy=policyMode==='missing'?undefined:policyMode==='failed'?()=>{throw Error('policy unavailable');}:policyMode==='invalid'?()=>1:policyMode==='extended'?exec=>exec.name==='future_shared_read'||isReadOnlyTool(exec):isReadOnlyTool;
+  const innerRoot=process.env.INNER_PLUGIN_ROOT;
+  const ledger=innerRoot?new (await import(pathToFileURL(path.resolve(innerRoot,'lib/action-ledger.js')))).ActionLedger(dir,'shared-policy',policy):null;
   put('characters/censhu/integration.json',{sessionId:'role'});
   put('speak-up-config.json',{总开关:true,试运行:false,目标会话:['role']});
   put('censhu-inner-life/display-session.json',{sessionId:'life'});
@@ -208,19 +216,21 @@ for(const [scenario,calls,phase] of [
   const events=[{type:'user/message',data:{id:run}}];
   for(const [i,[name,args]] of calls.entries()){
    const callId='call-'+i;
+   const exec={name,arguments:args,callId};ledger?.claim(exec);ledger?.settle(exec,{isError:true});
    events.push({type:'tool/call',data:{name,arguments:args,callId}},{type:'tool/result',data:{message:{toolCallId:callId,isError:true,content:[{type:'text',text:'timeout'}]}}});
   }
   events.push({type:'turn/end',data:{reason:{kind:'error'}}});
   const worker={status:'idle',session:{id:'life',snapshotEvents:()=>events}};
   const offs=[],noop=()=>()=>{},oldClock=Date.now;
   const ctx={agents:{roots:()=>[]},workspaceRegistry:{},webServer:{register:noop},tools:{guard:noop,register:noop},on:noop,
-   sessionController:{resolveAgent:async()=>worker},cenShuLifeShared:{},cenShuInnerLife:{},
+   sessionController:{resolveAgent:async()=>worker},cenShuLifeShared:{isReadOnlyTool:policy},cenShuInnerLife:{},
    effect(fn){const off=fn();if(typeof off==='function')offs.push(off);}};
   try{
    Date.now=()=>now;apply(ctx);await new Promise(resolve=>setImmediate(resolve));
    const saved=JSON.parse(fs.readFileSync(path.join(dir,'state.json')));
    assert.equal(saved.choice.phase,phase);
    assert.equal(!!saved.choice.actionStarted,phase==='verify');
+   if(ledger)assert.equal(ledger.view().length>0,phase==='verify','ledger and opportunity recovery must use the same service judgment');
    assert.equal(saved.choice.retryAt,phase==='retry'?now+300000:undefined);
    assert.ok(saved.history.some(r=>r.type==='工具报错'));
   }finally{Date.now=oldClock;for(const off of offs.reverse())off();}
