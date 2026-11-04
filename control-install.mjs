@@ -4,15 +4,24 @@ import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const control=fileURLToPath(new URL('./control.mjs',import.meta.url));
+// Native Pet 0.4.x integration must be preserved when its modules are rebuilt.
+// Both capabilities and correction routing are required, not just a version tag.
+export function nativePetAgency(source){
+ const marker=source.includes('censhu-pet-agency-v1');
+ if(marker&&!['agencySay','agencyMotion','petCorrection'].every(x=>source.includes(x)))throw Error('Pet 原生主动接口不完整，请重新构建桌宠');
+ return marker;
+}
 export function installControl(profile){
  const modules=path.join(profile,'node_modules'),home=path.resolve(profile,'../..');
  const session=JSON.parse(fs.readFileSync(path.join(home,'characters/censhu/integration.json'),'utf8')).sessionId;
  if(!session)throw Error('主动进行尚未绑定会话');
  const plans=[];
+ const nativePet=new Set(['lib/index.js','lib/app.js'].map(file=>path.join(modules,'dsh-pet',file)).filter(file=>fs.existsSync(file)&&nativePetAgency(fs.readFileSync(file,'utf8'))));
  function patch(pkg,file,from,to){
    const root=path.join(modules,pkg);if(!fs.existsSync(root))return;
    const dest=path.join(root,file),row=plans.find(x=>x.dest===dest)||{dest,src:fs.readFileSync(dest,'utf8').replaceAll('\r\n','\n')};
    if(!plans.includes(row))plans.push(row);
+   if(nativePet.has(dest))return;
    if(file==='chat-service.mjs'&&to.includes('if(agencyOwner()&&mark.agencyOffer)')&&row.src.includes('this.deliverReply(contact,mark,await this.agent.reply('))return;
    if(to.includes('agencyDevelop:async(part)=>')&&row.src.includes('agencyDevelop:async(part)=>')||to.startsWith('  agencyLife(request){')&&row.src.includes('  agencyLife(request){')||row.src.includes(to)||to.includes("if(agencyOwner()){agencySignal('抖音来信'")&&row.src.includes('mark.agencyOffer={id,last:'))return;
    if(to.includes('agencySay:async(text)')&&row.src.includes('agencyMotion:async(name)'))return;
@@ -67,6 +76,7 @@ export function installControl(profile){
    if(row.dest.endsWith('spark-service.mjs'))row.src=row.src.replace('greetingProvider: agencyOrder?async()=>({text:agencyOrder.text}):this.greetingProvider','greetingProvider: this.greetingProvider');
  }
  for(const r of plans){
+   if(nativePet.has(r.dest))continue;
    const imp="import {owner as agencyOwner,signal as agencySignal,current as agencyCurrent} from './censhu-control.mjs';";
    if(!r.dest.endsWith('client.js')&&!r.dest.endsWith('outbound-review.mjs')&&!r.src.includes(imp))r.src=imp+'\n'+r.src;
    if((r.dest.endsWith('chat-service.mjs')||r.dest.endsWith('spark-service.mjs'))&&!r.src.includes('takeReply as agencyTakeReply'))r.src="import {takeReply as agencyTakeReply} from './censhu-control.mjs';\n"+r.src;
