@@ -85,3 +85,17 @@ export function unchangedSession(events,pending){
  if(!Array.isArray(events)||!Number.isSafeInteger(pending.beforeSeq))return false;
  return events.at(-1)?.seq===pending.beforeSeq&&!snapshotHas(events,pending.run);
 }
+// Native request headers moved model selection under config. Read only an
+// observed request header, never infer a model from global defaults or caches.
+export function observedModel(header){
+ const value=header?.config?.model??header?.model;
+ return typeof value==='string'&&value?value:typeof value?.id==='string'?value.id:null;
+}
+export function lifeModelView(agents,worker,state){
+ try{
+  const agent=agents?.get?.(worker)||(agents?.list?.()||agents?.roots?.()||[]).find(a=>String(a.session?.id||a.id).replace(/^session-/,'')===String(worker).replace(/^session-/,''));
+  const model=observedModel(agent?.session?.requestHeader?.());
+  if(model)return {model,source:'生活会话最近请求'};
+ }catch{/* No observed header yet; a persisted matching receipt may still exist. */}
+ return state.mainModelSession===worker&&state.mainModel?{model:state.mainModel,source:'已保存的生活请求回执'}:{model:null,source:'尚无生活会话请求回执；不代表主动进行已暂停'};
+}

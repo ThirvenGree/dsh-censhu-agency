@@ -7,7 +7,7 @@ import {createRequestGuard} from './request-guard.js';
 import {dayOf,reserveContact} from './safety.js';
 import {queueDisplay,describePlan,describeActivity,describeCall,describeResult} from './timeline.js';
 import {observations,current,replyOrder,inspectAdapters} from './control.mjs';
-import {nextIncoming,settleChoice,commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession,choiceRetryStatus,requestChoiceRetry} from './continuity.js';
+import {nextIncoming,settleChoice,commitDelivery,snapshotHas,timing,sendReceipt,unchangedSession,choiceRetryStatus,requestChoiceRetry,observedModel,lifeModelView} from './continuity.js';
 import {lifeInputs,revise,nextWindow} from './integration.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -296,7 +296,7 @@ export function apply(ctx){
      active.tracking=true;if(state.pending?.run===active.run&&commitDelivery(state,state.pending,Date.now()))commit();
    }
    if(!active.tracking||active.ended)return;
-   if(e.type==='request/header'){const h=d.header||{};const model=typeof h.model==='string'?h.model:h.model?.id;if(model)state.mainModel=model;commit();}
+   if(e.type==='request/header'){const model=observedModel(d.header);if(model){state.mainModel=model;state.mainModelSession=executionId();commit();}}
    const choice=state.choice?.run===active.run?state.choice:null;
    if(e.type==='tool/call'){
      if(choice&&!isReadOnlyChoiceCall(d.name,d.arguments))choice.actionStarted=true;
@@ -473,7 +473,7 @@ export function apply(ctx){
      setImmediate(()=>void tick());
    }catch(error){res.writeHead(error.status||400,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:error.message}));}
  }}));
- ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){try{requestGuard.check(req,'/state');if(req.method!=='GET')throw Error('仅允许读取');}catch{res.writeHead(403);res.end();return;}res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,lastHistoryProjection:state.lastHistoryProjection,requestProjection:requestProjectorStatus(ctx.llm),contextBudgets:ctx.cenShuLifeShared.contextBudgetStatus?.()||[],ownership:ownership(),recovery:choiceRetryStatus(state,retryOptions()),interfaces:interfaces(),csrf:requestGuard.token,rhythm,adapterAudit,displayBinding:{role:bound(),display:displayIdNow()},scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,rounds:state.rounds,mainModel:state.mainModel,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
+ ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/censhu-agency/state',handler(req,res){try{requestGuard.check(req,'/state');if(req.method!=='GET')throw Error('仅允许读取');}catch{res.writeHead(403);res.end();return;}res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({status,lastHistoryProjection:state.lastHistoryProjection,requestProjection:requestProjectorStatus(ctx.llm),contextBudgets:ctx.cenShuLifeShared.contextBudgetStatus?.()||[],ownership:ownership(),recovery:choiceRetryStatus(state,retryOptions()),interfaces:interfaces(),csrf:requestGuard.token,rhythm,adapterAudit,displayBinding:{role:bound(),display:displayIdNow()},scopeAudit:read(path.join(home,'censhu-agency/scope-audit.json'),null),current:current(home,bound()),control:read(path.join(home,'censhu-agency/control.json'),{}).adapters,memoryRead:state.memoryRead,pending:state.pending?{run:state.pending.run,phase:state.pending.phase}:null,rounds:state.rounds,mainModel:lifeModelView(ctx.agents,executionId(),state).model,modelSource:lifeModelView(ctx.agents,executionId(),state).source,geminiAt:state.geminiAt,geminiRetryAt:state.geminiRetryAt,inputAt:state.inputAt,nextConsiderAt:state.nextConsiderAt,notes:state.notes,history:state.history.slice(-30).reverse(),at:Date.now()}));}}));
  const timer=setInterval(()=>{if(busy)renew();void tick();},20000);timer.unref?.();void tick();
  ctx.effect(()=>()=>{stopped=true;clearInterval(timer);active?.offModel?.();save(lease,{until:0});});
 }
