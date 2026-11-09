@@ -170,7 +170,8 @@ test('actual agency dispatch installs native ledger before followup and reuses t
  const inner=path.join(home,'censhu-inner-life'),display=new DisplaySession(ctx,inner);
  const service=lifeActionGate(ctx,inner,display,()=>'life');ctx.cenShuInnerLife={registerAgencyWorker(){},claimAgencyActionTurn:(...args)=>service.claim(...args)};
  try{Date.now=()=>now;apply(ctx);
-  for(let i=0;i<100&&!finished&&!error;i++)await new Promise(r=>setTimeout(r,5));
+  // Date.now is faked here, so wait on the monotonic clock: up to 10 s for slow CI runners (Windows timers tick ~15 ms).
+  for(const until=performance.now()+10000;!finished&&!error&&performance.now()<until;)await new Promise(r=>setTimeout(r,5));
   if(error)throw error;
   assert.ok(finished,fs.readFileSync(path.join(dir,'state.json'),'utf8').slice(-1200));
   assert.equal(attempts,1);assert.equal(fs.readFileSync(path.join(dir,'fixture.txt'),'utf8'),'once');
