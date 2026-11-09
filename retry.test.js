@@ -52,7 +52,7 @@ test('POST recovery uses the local CSRF guard, persists the original opportunity
  const ledger=fs.readFileSync(path.join(home,'censhu-inner-life/actions.json'),'utf8');
  const main={session:{id:'role'},status:'idle'},life={session:{id:'life'},status:'idle'};
  const noop=()=>()=>{};
- const ctx={agents:{get:id=>id==='role'?main:id==='life'?life:undefined,roots:()=>[main,life]},workspaceRegistry:{},
+ const ctx={provide(name,value){this[name]=value;},agents:{get:id=>id==='role'?main:id==='life'?life:undefined,roots:()=>[main,life]},workspaceRegistry:{},
   tools:{register:noop,guard:noop,get:()=>null},on:noop,cenShuLifeShared:{},cenShuInnerLife:{},
   sessionController:{resolveAgent:()=>assert.fail('daily limit should stop the turn before resolving an agent')},
   webServer:{register(route){routes.set(route.path,route);return ()=>routes.delete(route.path);}},
@@ -83,4 +83,14 @@ test('POST recovery uses the local CSRF guard, persists the original opportunity
   if(previousHome===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=previousHome;
   fs.rmSync(home,{recursive:true,force:true});
  }
+});
+
+test('crashed delivered turn reconsiders with the same action-ledger thread',async()=>{
+ const {recoverInterruptedChoice}=await import('./continuity.js');
+ const choice={phase:'delivered',run:'r',thread:'stable-task',notes:[]};
+ const events=[{type:'user/message',data:{id:'r'}},{type:'tool/call',data:{name:'generate_image'}}];
+ const next=recoverInterruptedChoice(choice,events,123);
+ assert.equal(next.phase,'retry');assert.equal(next.thread,'stable-task');assert.equal(next.needsVerification,true);
+ assert.throws(()=>recoverInterruptedChoice(choice,[],123),/核对/);
+ assert.equal(recoverInterruptedChoice(choice,[...events,{type:'turn/end'}],123),choice);
 });

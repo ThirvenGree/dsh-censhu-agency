@@ -1,6 +1,10 @@
 export function validAt(note,now){
  return (!note.notBefore||note.notBefore<=now)&&(!note.expiresAt||now<note.expiresAt);
 }
+/** Cues she should see this turn: not yet considered, or something has changed since she last did. */
+export function openCues(notes,sessionId,changes,now){
+ return notes.filter(n=>n.sessionId===sessionId&&n.triggerCue&&(!n.deliveredAt||changes.some(c=>c.at>n.deliveredAt))&&validAt(n,now));
+}
 export function unchangedNotes(refs,notes,now){
  return refs.every(ref=>notes.some(n=>n.id===ref.id&&(n.revision||0)===ref.revision&&validAt(n,now)));
 }

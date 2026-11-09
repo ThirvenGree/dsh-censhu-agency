@@ -1,5 +1,5 @@
 # 主动进行
-生活、观看与独处提供事实和进度。Gemini 合并事实，DSH 的绑定主会话决定是否行动并在原工具循环中读取结果。沿用主动搭话的总开关、试运行和绑定目标，凌晨 2 至 6 点不发起机会。界面记录主会话报告与工具返回，两者不能替代平台的实际送达回执。
+生活、观看与独处提供事实和进度。Gemini 合并事实，专用的生活会话决定是否行动并在原工具循环中读取结果，只有要发 QQ 时才一次性交给绑定主会话。沿用主动搭话的总开关、试运行和绑定目标，凌晨 2 至 6 点不发起机会。界面记录主会话报告与工具返回，两者不能替代平台的实际送达回执。
  
 设计参考：
 - [Thoughtful Agents](https://github.com/xybruceliu/thoughtful-agents)：想法的形成与表达时机分开。
@@ -39,7 +39,7 @@ Gemini 整理处境，绑定 DSH 会话里的模型独立判断并执行。使�
 
 ## 1.4 集中主动选择
 
-绑定角色的活动、当前念头和选择由主动回合持有。可用生活模板只是候选；开始、推进、结束活动由主会话提交。天气、模拟的外部遭遇、收信、记忆审核、音画取样仍可在后台工作。自主浏览与观看采用逐步工具，图片、音轨、下一批分镜与真实执行结果回到本轮。B 站通知、抖音新私信和现有定时“学习”机会可进入同一队列。抖音指定待答的正文由角色选定，原有平台身份、上下文与发送审核仍在执行入口核对。主桌宠周期碎碎念改为角色选定的台词。用户显式发起的交互及普通定时任务保留原入口。
+绑定角色的活动、当前念头和选择由主动回合持有。可用生活模板只是候选；开始、推进、结束活动由生活会话提交。天气、模拟的外部遭遇、收信、记忆审核、音画取样仍可在后台工作。自主浏览与观看采用逐步工具，图片、音轨、下一批分镜与真实执行结果回到本轮。B 站通知、抖音新私信和现有定时“学习”机会可进入同一队列。抖音指定待答的正文由角色选定，原有平台身份、上下文与发送审核仍在执行入口核对。主桌宠周期碎碎念改为角色选定的台词。用户显式发起的交互及普通定时任务保留原入口。
 
 安装器针对已适配的本机插件代码，先检查入口签名和语法再写入。对应版本不匹配时会报告需要适配的文件。运行状态页可检查文件摘要；更新其他插件后请重新核对。跨进程控制登记不因模型失败而解除，避免各旧定时器在停机时重新发起选择。特殊平台没有取得实际回执时只记为未确认。
 
@@ -62,3 +62,105 @@ Gemini 整理处境，绑定 DSH 会话里的模型独立判断并执行。使�
 ### 按目标回忆做法
 
 生活回合形成目标后，可以用 `censhu_agency_method` 的 `recall` 查阅独处插件已通过正反回放和独立审核的方法，返回适用情境、做法、例外、验证方式和原经历编号。再用 `choose` 记录采用、放下或仍然不确定。选择限定在本次生活回合刚读到的版本；实际执行仍要调用对应工具。
+
+## 2026-11-07 本地修改：测试工作区不写主动行动观察
+- `control.mjs` 的 `signal()` 在两种情况下不写观察：环境变量 `DSH_EXTERNAL_WRITES_BLOCKED=1`，或全局检查函数 `Symbol.for('dsh.externalWritesBlocked')` 返回 true。
+  - 抖音插件在测试工作区（记忆隔离）的工具调用里设置全局检查函数。
+  - B站命令在测试工作区里运行时设置这个环境变量。
+- 不 import 其他文件，安装脚本整份复制到各插件时仍可用。三份副本（抖音、B站 lib、B站 tools/commands）已同步成同一份。
+- `~/.dsh/censhu-agency/control.json` 的 13 个文件哈希已按现有文件重新登记，备份为 `control.json.before-hash-resync-20261107.bak`。
+  - 先在临时副本上演练 `installControl`：直接重装会把抖音 `chat-service.mjs` 的待答回复改回自动生成，撤销 11-06 “由岑舒亲手写”的改动，所以只更新哈希、不重装。
+- 测试：`control.test.js` 0 项失败。
+- 备份：`control.mjs.before-test-workspace-guard-20261107.bak`。
+
+## 2026-11-08：主动进行决定，专用工作区执行
+- 本人定的分工：主动进行接管时，她在主动回合里照旧看到全部处境、决定做什么；要一步步操作的事（上网逛逛、刷抖音或 B站、处理私信评论、重看）交给对应的专用工作区，由她在那里亲自做，做完把她最后说的话作为回执交回主动进行。青枔让她做的事仍在原来的会话里。
+- 新工具 `censhu_agency_workspace`（`host.js`）：
+  - `place` 可选 `browser`、`douyin-watch`、`douyin-social`、`douyin-revisit`、`bili-watch`、`bili-social`、`bili-revisit`；
+  - `task` 用她自己的话写想做什么，`why` 可选；
+  - `notices` 放要一起交过去的通知编号（抖音来信、抖音评论通知、B站通知）。
+  - 各插件把自己的工作区登记在全局登记表 `Symbol.for('dsh.censhu.workspaces.v1')` 里，这个工具按 `place` 找到对应插件去投递。插件没加载时报“这个工作区现在不可用”。
+- 执行会话里拦下直接操作（判断在新文件 `workspace-guard.js`）：
+  - 拦下的：浏览器的 `browser_task`、`browser_handoff`、`browser_direct_*`、`bsk_*`；抖音的操作工具和读私信原文；B站的 `node bili.mjs` 观看、私信、评论、弹幕、动态、分享命令，以及 `bili_dm_view`、收删表情。
+  - 拦下时提示改用 `censhu_agency_workspace`，并写明建议的 `place`。
+  - 不拦的：只读的状态和资料工具（如 `douyin_status`、`douyin_chat_offers`、`douyin_notice_list`、`douyin_saved_videos`、`browser_interest`、`node bili.mjs inbox / quota`）。
+- 主动回合的提示（`core.js`）改成：要一步步做的事交给专用工作区；处理来信时把通知编号交过去，在那边读原文、亲手写回复。
+- **修了一个问题**：原来的 `censhu_agency_activity(action='douyin-reply')` 会给抖音插件下一条正文是字面 `channel-draft` 的回复单。抖音插件 11-06 起不再代写，会把这串字当作回复正文去审核和发送。现在去掉了这个动作，改由抖音社交工作区里她亲手写。
+- 回执：工作区那一轮做完后，以观察的形式送回（来源分别是“浏览器工作区回执”“抖音工作区回执”“B站工作区回执”），下一个主动回合在“外部通知仅作资料”里能读到。
+- 测试：新增 `workspace.test.js`（2 项）。全量 80 项：67 通过，0 失败，13 项需要真实环境，自动跳过。
+- 备份：`host.js`、`core.js`、`README.md` 的 `.before-agency-workspace-20261108.bak`。
+- 需要重启 DSH 生效。
+
+## 2026-11-08：主动回合的通知带上是谁、什么类型和预览
+- 起因：主动进行接管时，抖音私信的通知只有“会话 conv:… 有 N 条新消息”，B站通知只有“B站有外部通知，正文保留在原渠道”。她在主动回合里看不出是谁、是私信还是评论，没法判断要不要去处理，只能先交给工作区再看。
+- `control.mjs` 的 `observations()` 不再把“B站通知”的内容换成一句空话，B站插件整理好的类型和预览照原样交给主动回合。四份副本（本插件、抖音 `censhu-control.mjs`、B站 `lib/` 和 `tools/commands/` 两份）一起改，内容仍然一致。生活插件和独处插件里的副本本来就是旧版本，这次没动。
+- `core.js` 主动回合的提示改成：来信和评论的通知带着对方是谁、什么类型和开头一两句预览，这些都是第三方原文，只作判断要不要去处理的资料；完整原文在原渠道。
+- 测试：`workspace.test.js` 加核对。全量 80 项：67 通过，0 失败，13 项跳过。
+- 备份：`control.mjs`、`core.js`、`workspace.test.js`、`README.md` 的 `.before-notice-preview-20261108.bak`。
+- 需要重启 DSH 生效。
+
+## 2026-11-08：收私信和评论的时机改成按情况调整
+- 抖音专用浏览器关着时的提醒，接管时也会作为“抖音私信提醒”通知送到主动回合（详见抖音插件 README 同名一节）。
+- `workspace-guard.js`：主动回合里调 `douyin_browser_open` 时，建议的去处从 `douyin-watch` 改成 `douyin-social`。
+- 测试：`workspace.test.js` 同步。全量 80 项：67 通过，0 失败，13 项跳过。
+- 备份：`workspace-guard.js`、`workspace.test.js`、`README.md` 的 `.before-dynamic-listen-20261108.bak`。
+- 需要重启 DSH 生效。
+
+## 2026-11-08：配合生活插件的预算接口
+- `integration.test.js` 里直接调用 `budget.add` 的地方去掉了提示文字参数。运行代码不用改，`budgetContext` 的参数位置没变。
+- 备份：`integration.test.js`、`README.md` 的 `.before-context-review-20261108.bak`。
+
+## 2026-11-09：观看时段和 B站命令名单
+- `core.js`：主动回合的提示里说明，什么时候刷抖音、B站由她决定，不受设置里的观看时段限制；总开关和每天的时长、请求额度照旧。
+- `workspace-guard.js` 修漏洞：名单原来写的是脚本文件名，和 `bili.mjs` 的命令名对不上。
+  - 转到 B站刷视频工作区：`view`、`watch-video`，以及 `bili_view_frames` 工具。
+  - 转到 B站社交工作区：`dynamic-edit`、`watch`（盯评论回复）、`await`（等直播间弹幕）。
+  - 只读的 `rcmd`、`search`、`video`、`comments`、`debrief` 不拦。
+- 测试：`workspace.test.js` 补了这些命令。全量 67 项通过，13 项跳过。
+- 备份：`workspace-guard.js`、`core.js`、`workspace.test.js`、`README.md` 的 `.before-agency-watch-window-20261109.bak`。
+- 需要重启 DSH 生效。
+
+## 2026-11-09：允许搜索看过的视频
+- `workspace-guard.js`：`douyin_watched_search` 是只读工具，主动回合里不再转交给工作区。
+- 备份：`workspace-guard.js`、`README.md` 的 `.before-watched-search-20261109.bak`。
+- 需要重启 DSH 生效。
+
+## 2026-11-09：生活会话不再超窗，超窗不再重试
+原因：生活会话每回合都追加一份技能目录、系统提示和运行上下文，旧副本全部留在请求里。线上一次请求约 1486 万字符，真正的对话只有约 9 万字符，所以回合一直报超过模型窗口。
+
+- `request-history.js`：技能目录、系统提示、运行上下文、时间这四类只把最新一份发给模型。工具增减消息保留编号，每个工具只留最后一次变化。
+- `request-history.js`：对话部分只保留最近 30 个主动回合，总量不超过 24 万字符（`HISTORY_LIMITS`）。最新回合不受限；跨截断线的工具调用和结果整组保留。
+- `continuity.js`、`host.js`：超窗的回合不再重试原打算，也不占当日回合数。新回合按 1、4、24 小时退避，直到有一回合正常结束。
+- 只改发给模型的请求，会话记录本身不动。用线上会话数据核对：请求降到约 17.7 万字符，45 组工具调用全部成对。
+- 备份：`request-history.js`、`continuity.js`、`host.js`、`request-history.test.js`、`README.md` 的 `.before-history-cap-20261109.bak`。
+- 需要重启 DSH 生效；后台恢复挂起期间主动回合仍不会运行。
+
+## 2026-11-09：主动联系没发出时退回冷却
+- `safety.js`：`reserveContact` 返回之前的记录，新增 `releaseContact`；只有这一回合自己的占用才会被退回，较新的占用不动。
+- `host.js`：交接给主会话后，如果主会话没有任何 QQ 发送动作，退回共同冷却。发送报错或结果不明时冷却照常保留，避免重复联系。
+- `host.js`：联系复核的那次模型调用带上本回合编号，方便在调用记录里和这一回合对应起来。
+- 备份：`safety.js`、`host.js`、`README.md` 的 `.before-next-batch-20261109.bak`。需要重启 DSH 生效。
+
+## 2026-11-09：主动联系账本和独处近况
+- 主动联系记录发出时间、渠道、回应用时，保留最近 100 条。来信的回应方式（有内容地接话、简短应答、让少发等）由 Gemini 判断，暂停期间不占尝试次数。
+- 回合资料里新增“近期主动联系结果”，只列事实并写明没有回应的原因未知；新增“独处近况”，告诉她距上次写日记、整理想法、更新内在状态和性格过了多久，要不要做由她决定。
+- 回应方式的判断思路借鉴 AstrBot 主动插件分支的 `classify_reply`，改成交给模型，没有用它的正则和硬冷却。
+- 备份：`core.js`、`continuity.js`、`host.js`、`README.md` 的 `.before-batch-three-20261109.bak`。需要重启 DSH 生效。
+
+- `workspace-guard.js`（2026-11-09）：`douyin_watched_ask` 也是只读工具，主动回合里不转交给工作区。备份 `.before-round3-20261109.bak`。
+
+## 2026-11-09：空转事实和拿不准的事
+- 回合资料新增“最近的主动回合”（距上一回合多久、连续几回合没有行动、因专注跳过几次）和“知识里还拿不准的事”，只给事实，要不要做由她决定。思路借鉴 tangle 的 `quietHeartbeats` 和 MaiBot 的连续等待提醒。
+- 主动回合提示加一句：没有新变化时不用翻炒旧事项（借鉴 OpenClaw 的心跳提示）。
+- 修正“绑定主会话决定”的旧说法：决定在生活会话里做，只有发 QQ 时才交给绑定主会话。
+- 备份：`core.js`、`continuity.js`、`host.js`、`README.md` 的 `.before-batch-four-20261109.bak`。需要重启 DSH 生效。
+
+## 2026-11-09：电脑在场信号
+- `presence.js`：主动回合和联系复核能看到这台电脑的键鼠空闲时间、前台是否全屏、前台程序名。不截屏，不读窗口标题和内容，只作事实，程序不据此拦截。
+- 粒度写在 `<DSH 主目录>/censhu-agency/presence.json`：`{"level":"app"}`（默认）、`"activity"`（不含程序名）、`"off"`（不读）。
+- `prospective.js` 抽出 `openCues`，补了跨日回归测试。
+- 备份：`host.js`、`prospective.js`、`prospective.test.js`、`README.md` 的 `.before-batch-five-20261109.bak`。需要重启 DSH 生效。
+
+## 2026-11-09：夜里不再有固定禁止时段
+- 去掉 02:00–06:00 的硬限制（回合调度、发送许可、联系预留）。主动回合和联系复核会看到北京时间，夜里要不要行动由她和 Gemini 判断。每天 24 回合的上限和发送防重复保持不变。
+- 备份：`host.js`、`core.js`、`safety.js`、`presence.js`、`README.md` 的 `.before-batch-eight-20261109.bak`。需要重启 DSH 生效。

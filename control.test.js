@@ -88,7 +88,7 @@ test('delivery persists the original opportunity; only an undecided failed turn 
  }
 });
 
-test('shared contact reservation observes other sources, rest time and duplicate handoffs',async()=>{
+test('shared contact reservation observes other sources and duplicate handoffs, at any hour',async()=>{
  const {reserveContact,dayOf}=await import('./safety.js');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'agency-contact-')),dir=path.join(root,'characters/censhu');
  try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'integration.json'),JSON.stringify({sessionId:'role'}));
@@ -96,7 +96,7 @@ test('shared contact reservation observes other sources, rest time and duplicate
  fs.writeFileSync(path.join(dir,'initiative.json'),JSON.stringify({at:now-1000,source:'bridge'}));
  assert.throws(()=>reserveContact(root,'role','r1',now),/冷却/);
  reserveContact(root,'role','r1',now+3600000);assert.throws(()=>reserveContact(root,'role','r1',now+7200000));
- assert.throws(()=>reserveContact(root,'role','r2',Date.parse('2026-11-04T04:30:00+08:00')));
+ reserveContact(root,'role','r2',Date.parse('2026-11-04T04:30:00+08:00'));
  assert.equal(dayOf(Date.parse('2026-11-03T16:03:00Z')),'2026-11-04');
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
@@ -124,12 +124,13 @@ test('paused host keeps the lease until explicit guarded release and reclaims wi
  const write=(file,obj)=>{const dest=path.join(home,file);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,JSON.stringify(obj));};
  write('characters/censhu/integration.json',{sessionId:'role'});write('speak-up-config.json',{总开关:false});
  const noop=()=>()=>{};
- const ctx={agents:{roots:()=>[]},tools:{guard:noop,register:noop},webServer:{register:r=>{routes.set(r.path,r.handler);return ()=>{};}},on:noop,effect:f=>{const off=f();if(typeof off==='function')dispose.push(off);},cenShuLifeShared:{},cenShuInnerLife:{}};
+ const ctx={provide(name,value){this[name]=value;},agents:{roots:()=>[]},tools:{guard:noop,register:noop},webServer:{register:r=>{routes.set(r.path,r.handler);return ()=>{};}},on:noop,effect:f=>{const off=f();if(typeof off==='function')dispose.push(off);},cenShuLifeShared:{},cenShuInnerLife:{}};
  try{
  apply(ctx);
  const call=(name,method,token)=>{let code,body;const req={headers:{host:'localhost:3388','x-censhu-csrf':token},method,socket:{localPort:3388}};
  routes.get('/censhu-agency/'+name)(req,{writeHead:v=>code=v,end:v=>body=v});return {code,value:body?JSON.parse(body):null};};
  const state=call('state','GET').value;assert.equal(state.ownership.enabled,false);assert.equal(owner('role'),true);
+ assert.equal((await ctx.cenShuAgencyRecovery.recoverRuntime({id:'manual',recoveredAt:Date.now()})).status,'disabled');
  assert.equal(call('release','POST','wrong').code,403);assert.equal(owner('role'),true);
  assert.equal(call('release','POST',state.csrf).code,200);assert.equal(owner('role'),false);
  assert.equal(call('enable','POST',state.csrf).value.enabled,false);assert.equal(owner('role'),true);
@@ -165,7 +166,7 @@ test('actual agency dispatch installs native ledger before followup and reuses t
    onEvent(this.session,{type:'turn/end',data:{reason:{kind:'completed'}}});
   }catch(e){error=e;throw e;}
  },async whenIdle(){finished=true;}};
- const noop=()=>()=>{};const ctx={agents:{roots:()=>[main,agent]},workspaceRegistry:{},webServer:{register:noop},tools:{register:noop,guard(fn){guards.push(fn);return ()=>guards.splice(guards.indexOf(fn),1);}},on(name,fn){if(name==='session/event')onEvent=fn;return ()=>{};},effect(fn){const off=fn();if(typeof off==='function')offs.push(off);},sessionController:{resolveAgent:async id=>id==='life'?agent:main},cenShuLifeShared:{status:()=>({enabled:true,sessionIds:['role'],intentions:[]}),snapshot:()=>({memories:[]})}};
+ const noop=()=>()=>{};const ctx={provide(name,value){this[name]=value;},agents:{roots:()=>[main,agent]},workspaceRegistry:{},webServer:{register:noop},tools:{register:noop,guard(fn){guards.push(fn);return ()=>guards.splice(guards.indexOf(fn),1);}},on(name,fn){if(name==='session/event')onEvent=fn;return ()=>{};},effect(fn){const off=fn();if(typeof off==='function')offs.push(off);},sessionController:{resolveAgent:async id=>id==='life'?agent:main},cenShuLifeShared:{status:()=>({enabled:true,sessionIds:['role'],intentions:[]}),snapshot:()=>({memories:[]})}};
  const inner=path.join(home,'censhu-inner-life'),display=new DisplaySession(ctx,inner);
  const service=lifeActionGate(ctx,inner,display,()=>'life');ctx.cenShuInnerLife={registerAgencyWorker(){},claimAgencyActionTurn:(...args)=>service.claim(...args)};
  try{Date.now=()=>now;apply(ctx);
@@ -222,7 +223,7 @@ for(const [scenario,calls,phase,policyMode] of [
   events.push({type:'turn/end',data:{reason:{kind:'error'}}});
   const worker={status:'idle',session:{id:'life',snapshotEvents:()=>events}};
   const offs=[],noop=()=>()=>{},oldClock=Date.now;
-  const ctx={agents:{roots:()=>[]},workspaceRegistry:{},webServer:{register:noop},tools:{guard:noop,register:noop},on:noop,
+  const ctx={provide(name,value){this[name]=value;},agents:{roots:()=>[]},workspaceRegistry:{},webServer:{register:noop},tools:{guard:noop,register:noop},on:noop,
    sessionController:{resolveAgent:async()=>worker},cenShuLifeShared:{isReadOnlyTool:policy},cenShuInnerLife:{},
    effect(fn){const off=fn();if(typeof off==='function')offs.push(off);}};
   try{

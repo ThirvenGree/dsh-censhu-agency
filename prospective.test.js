@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validAt,unchangedNotes,updateNote} from './prospective.js';
+import {validAt,unchangedNotes,updateNote,openCues} from './prospective.js';
 test('cross-day intention rejects stale actions and other owners',()=>{
  const notes=[],now=Date.UTC(2026,10,3),later=now+86400000;
  const note=updateNote(notes,{text:'窗框',triggerCue:'画窗台时',sourceRefs:['asset:1'],notBefore:later,expiresAt:later+60000},'life',now,'n');

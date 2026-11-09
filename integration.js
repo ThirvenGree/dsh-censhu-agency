@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 export function lifeInputs(service, sessionId){
  const s=service.status();
  if(!s.enabled||!s.sessionIds.includes(sessionId))throw Error('生活接口已关闭或会话未绑定');
- return {intentions:s.intentions.filter(x=>['available','upcoming'].includes(x.status)).map(({id,text,generatedAt,revision=0,priority,status})=>({id,text,generatedAt,revision,priority,status})),mood:s.mood?.ok?{value:s.mood.mood,dimensions:s.mood.dims}:null};
+ return {intentions:s.intentions.filter(x=>['available','upcoming'].includes(x.status)).map(({id,text,generatedAt,revision=0,priority,status})=>({id,text,generatedAt,revision,priority,status})),mood:s.mood?.ok?{qualitative:true,mixedMood:s.mood.mixedMood||null,reason:s.mood.reason,updatedAt:s.mood.updatedAt}:null};
 }
 export function revise(service,sessionId,run,a){
  const change={id:a.id,generatedAt:a.generatedAt,expectedRevision:a.revision,priority:a.priority,action:a.direction,reason:a.reason};

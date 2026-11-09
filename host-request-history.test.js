@@ -33,7 +33,7 @@ test('agency host dispatch projects frozen native requests and exposes counts wi
    onEvent(this.session,{type:'turn/end',data:{reason:{kind:'completed'}}});
  },async whenIdle(){finished=true;}};
  const noop=()=>()=>{};
- const ctx={llm:native.llm,agents:{roots:()=>[main,agent]},workspaceRegistry:{},webServer:{register(route){routes.set(route.path,route);return ()=>routes.delete(route.path);}},
+ const ctx={provide(name,value){this[name]=value;},llm:native.llm,agents:{roots:()=>[main,agent]},workspaceRegistry:{},webServer:{register(route){routes.set(route.path,route);return ()=>routes.delete(route.path);}},
    tools:{register:noop,guard:noop,get:()=>null},on(name,fn){if(name==='session/event')onEvent=fn;return ()=>{};},effect(fn){const off=fn();if(typeof off==='function')offs.push(off);},
    sessionController:{resolveAgent:async id=>id==='life'?agent:main},cenShuLifeShared:{status:()=>({enabled:true,sessionIds:['role'],intentions:[]}),snapshot:()=>({memories:[]})},
    cenShuInnerLife:{registerAgencyWorker(){},claimAgencyActionTurn:()=>()=>{}}};

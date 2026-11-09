@@ -46,7 +46,7 @@ test('角色预算联用：三方省略原文可按会话隔离分页取回，�
  const lifeParts=[{key:'life:event:evt1:整理票根',text:'角色生活模拟记录，阶段：整理票根'},{owner:'inner',text:'【岑舒独处后的临时状态】[{"id":"entry-ok"}]。这是你自己的生活感受与打算'},{key:'life:omitted',text:lifeText}];
  const innerParts=[{owner:'inner',key:'inner:omitted',text:innerText}];
  const tool=budget.recallTool();
- const final=await budget.assemble(agent,()=>budget.assemble(agent,()=>budget.assemble(agent,()=>({contexts:[],sections:[],tools:[tool]}),v=>budget.add(v,agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),'资料可按需展开',onAccepted('agency'))),v=>budget.add(v,agent,'contexts','censhu-inner-life-observations',innerParts,'可按需回忆',onAccepted('inner'))),v=>budget.add(v,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆',onAccepted('life')));assert.equal(pages.备用文档[0],op.context.备用文档);
+ const final=await budget.assemble(agent,()=>budget.assemble(agent,()=>budget.assemble(agent,()=>({contexts:[],sections:[],tools:[tool]}),v=>budget.add(v,agent,'sections','censhu-agency-current',contextParts(op,[],'run',pages),onAccepted('agency'))),v=>budget.add(v,agent,'contexts','censhu-inner-life-observations',innerParts,'可按需回忆',onAccepted('inner'))),v=>budget.add(v,agent,'contexts','cen-shu-life',lifeParts,'可按需回忆',onAccepted('life')));assert.equal(pages.备用文档[0],op.context.备用文档);
  assert.doesNotMatch(JSON.stringify(final),/折叠的私有资料/);assert.equal((JSON.stringify(final).match(/整理票根/g)||[]).length,1);
  assert.doesNotMatch(JSON.stringify(final),/生活省略原文|独处省略原文/);assert.equal(plans,1);
  const seen=[];acknowledgeContext({context:()=>({ids:['entry-ok','not-admitted']}),seen:(_s,ids)=>seen.push(...ids)},'isolated',final.contexts);
@@ -76,4 +76,9 @@ test('角色预算联用：三方省略原文可按会话隔离分页取回，�
  assert.equal((await read({action:'catalog',...ref,version:'0'.repeat(64)})).status,'version_mismatch');
  assert.deepEqual(accepted,originalReceipts);assert.deepEqual(seen,['entry-ok']);assert.equal(plans,1);
  budget.dispose();
+});
+
+test('agency receives mixed emotions and current source revision, not just score',()=>{
+ const value=lifeInputs({status:()=>({enabled:true,sessionIds:['main'],intentions:[],mood:{ok:true,mood:71,dims:{worry:4},mixedMood:{label:'开心又牵挂'},reason:'旧书',updatedAt:123}})},'main');
+ assert.equal(value.mood.mixedMood.label,'开心又牵挂');assert.equal(value.mood.qualitative,true);assert.equal(value.mood.dimensions,undefined);assert.equal(value.mood.updatedAt,123);
 });
